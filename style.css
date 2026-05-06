@@ -192,6 +192,26 @@ input {
   margin-top: 12px;
 }
 
+.action-stack {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+button.warn {
+  background: linear-gradient(180deg, #9d3a2f, #6f2119);
+}
+
+button.alt {
+  background: linear-gradient(180deg, #7c6046, #4d3727);
+}
+
 .analysis-panel {
   display: grid;
   gap: 12px;
@@ -206,6 +226,54 @@ details {
   border-radius: 8px;
   padding: 14px;
   box-shadow: 0 10px 22px rgba(58, 35, 18, 0.08);
+}
+
+.callout {
+  border-color: rgba(142, 47, 36, 0.42);
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mini-card {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(184, 148, 111, 0.72);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.mini-card strong,
+article > strong {
+  font-size: 0.72rem;
+  font-weight: 900;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mini-card span {
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.moves,
+pre.small {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font: 0.86rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.small {
+  font-size: 0.92rem;
 }
 
 .label {
@@ -234,5 +302,9 @@ summary {
 
   .board {
     width: 100%;
+  }
+
+  .actions {
+    grid-template-columns: 1fr;
   }
 }

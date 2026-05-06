@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <title>Tiberius</title>
-  <link rel="stylesheet" href="style.css?v=e8ea1f5">
+  <link rel="stylesheet" href="style.css?v=duckdns-controls">
 </head>
 <body>
   <main class="app-shell">
@@ -19,7 +19,6 @@
           <h1>Tiberius</h1>
           <p id="engineStatus">Booting phone engine...</p>
         </div>
-        <button id="newGameBtn" type="button">New</button>
       </header>
 
       <div id="board" class="board" aria-label="Chess board"></div>
@@ -28,33 +27,75 @@
         <input id="moveInput" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="e2e4 or Nf3">
         <button id="playBtn" type="button">Play</button>
       </div>
+
+      <div class="action-stack">
+        <article class="callout">
+          <h2 id="puzzleTitle">Current puzzle</h2>
+          <p id="puzzleText">Loading...</p>
+        </article>
+        <div class="actions">
+          <button id="newWhiteBtn" type="button">Start as White</button>
+          <button id="newBlackBtn" type="button">Start as Black</button>
+          <button id="concedeBtn" class="warn" type="button">Concede</button>
+          <button id="newGameBtn" class="alt" type="button">Reset Board</button>
+        </div>
+      </div>
     </section>
 
     <section class="analysis-panel">
       <div class="status-card">
-        <div class="label">Position</div>
-        <div id="turnText">White to move</div>
-        <div id="evalText" class="eval">No eval yet</div>
+        <div id="status">Loading...</div>
+        <div class="meta-grid">
+          <div class="mini-card"><strong>Human</strong><span id="humanSide">white</span></div>
+          <div class="mini-card"><strong>Tiberius</strong><span id="tiberiusSide">black</span></div>
+          <div class="mini-card"><strong>Turn</strong><span id="turnText">white</span></div>
+          <div class="mini-card"><strong>Result</strong><span id="resultText">In progress</span></div>
+        </div>
       </div>
 
       <article>
-        <h2 id="predictionTitle">Prediction</h2>
-        <p id="predictionText">Tiberius will call out what it thinks you will do from memory, not what Stockfish says is best.</p>
+        <strong>Moves</strong>
+        <pre id="moves" class="moves">(none)</pre>
+      </article>
+
+      <article>
+        <strong>Plan label</strong>
+        <div id="strategyLabel" class="small">Balanced / not enough moves yet</div>
+      </article>
+
+      <article>
+        <strong>FEN</strong>
+        <pre id="fen" class="small"></pre>
+      </article>
+
+      <article>
+        <h2 id="whyTitle">Why this works best</h2>
+        <p id="whyText">Tiberius will explain her last move in human terms.</p>
+      </article>
+
+      <article>
+        <strong>When it works</strong>
+        <p id="whenText" class="small">Waiting for a move...</p>
       </article>
 
       <article>
         <h2>What It Is Preserving</h2>
-        <p id="preserveText">Waiting for the first search.</p>
+        <p id="preserveText" class="small">Waiting for a move...</p>
       </article>
 
       <article>
         <h2>Tradeoff</h2>
-        <p id="tradeoffText">Waiting for the first search.</p>
+        <p id="tradeoffText" class="small">Waiting for a move...</p>
       </article>
 
       <article>
-        <h2>Solve Like A Puzzle</h2>
-        <p id="puzzleText">Break the prediction without copying the engine.</p>
+        <h2>Solve it like a puzzle</h2>
+        <p id="coachText" class="small">Try to find the move that improves your pieces without loosening your structure.</p>
+      </article>
+
+      <article>
+        <strong>Sync</strong>
+        <p id="syncText" class="small">Phone outbox ready.</p>
       </article>
 
       <details>
@@ -64,6 +105,6 @@
     </section>
   </main>
 
-  <script type="module" src="app.js?v=e8ea1f5"></script>
+  <script type="module" src="app.js?v=duckdns-controls"></script>
 </body>
 </html>

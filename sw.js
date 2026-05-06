@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v6-versioned-modules";
+const CACHE = "tiberius-phone-v7-duckdns-controls";
 const ASSETS = [
   "./",
   "index.html",

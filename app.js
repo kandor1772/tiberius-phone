@@ -1,6 +1,6 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=e8ea1f5";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=e8ea1f5";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=duckdns-controls";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=duckdns-controls";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -9,16 +9,29 @@ const PIECES = {
 
 const boardEl = document.getElementById("board");
 const engineStatusEl = document.getElementById("engineStatus");
+const statusEl = document.getElementById("status");
 const newGameBtn = document.getElementById("newGameBtn");
+const newWhiteBtn = document.getElementById("newWhiteBtn");
+const newBlackBtn = document.getElementById("newBlackBtn");
+const concedeBtn = document.getElementById("concedeBtn");
 const moveInput = document.getElementById("moveInput");
 const playBtn = document.getElementById("playBtn");
+const humanSideEl = document.getElementById("humanSide");
+const tiberiusSideEl = document.getElementById("tiberiusSide");
 const turnText = document.getElementById("turnText");
-const evalText = document.getElementById("evalText");
-const predictionTitle = document.getElementById("predictionTitle");
-const predictionText = document.getElementById("predictionText");
+const resultTextEl = document.getElementById("resultText");
+const movesEl = document.getElementById("moves");
+const fenEl = document.getElementById("fen");
+const strategyLabelEl = document.getElementById("strategyLabel");
+const puzzleTitleEl = document.getElementById("puzzleTitle");
+const puzzleTextEl = document.getElementById("puzzleText");
+const whyTitleEl = document.getElementById("whyTitle");
+const whyTextEl = document.getElementById("whyText");
+const whenTextEl = document.getElementById("whenText");
 const preserveText = document.getElementById("preserveText");
 const tradeoffText = document.getElementById("tradeoffText");
-const puzzleText = document.getElementById("puzzleText");
+const coachTextEl = document.getElementById("coachText");
+const syncTextEl = document.getElementById("syncText");
 
 const chess = new Chess();
 let overlay = new TiberiusOverlay();
@@ -32,17 +45,38 @@ let loadedMemorySources = [];
 let failedMemorySources = [];
 let trajectory = [];
 let fullMemoryLoading = false;
+let humanColor = "w";
+let gameActive = true;
+let gameResult = "";
+let statusMessage = "New game started. You are white.";
+let lastStrategy = "Balanced / not enough moves yet";
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
+const PHONE_STATE_KEY = "tiberius-phone-state-v1";
+const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
+const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 
 function uci(move) {
   return `${move.from}${move.to}${move.promotion || ""}`;
 }
 
+function colorName(color) {
+  return color === "w" ? "white" : "black";
+}
+
+function tiberiusColor() {
+  return humanColor === "w" ? "b" : "w";
+}
+
+function isHumanTurn() {
+  return gameActive && !gameResult && chess.turn() === humanColor;
+}
+
 function setThinking(thinking) {
   engineThinking = thinking;
-  playBtn.disabled = thinking || chess.isGameOver() || chess.turn() !== "w";
+  playBtn.disabled = thinking || !isHumanTurn();
   moveInput.disabled = playBtn.disabled;
+  concedeBtn.disabled = !gameActive || thinking || Boolean(gameResult);
 }
 
 function memorySummaryText() {
@@ -59,10 +93,25 @@ function refreshEngineStatus() {
   engineStatusEl.textContent = `${engine} ${memorySummaryText()}`;
 }
 
+function squareColor(square) {
+  const fileIndex = "abcdefgh".indexOf(square[0]);
+  const rankIndex = Number(square[1]) - 1;
+  return ((fileIndex + rankIndex) % 2 === 0) ? "dark" : "light";
+}
+
+function syncSummary() {
+  const pending = readOutbox().length;
+  syncTextEl.textContent = pending
+    ? `Linked to DuckDNS. ${pending} event${pending === 1 ? "" : "s"} queued until a Tiberius sync endpoint accepts them.`
+    : "Linked to DuckDNS. Phone outbox is clear.";
+}
+
 function render() {
   boardEl.innerHTML = "";
-  const files = ["a","b","c","d","e","f","g","h"];
-  const ranks = ["8","7","6","5","4","3","2","1"];
+  const baseFiles = ["a","b","c","d","e","f","g","h"];
+  const baseRanks = ["8","7","6","5","4","3","2","1"];
+  const files = humanColor === "b" ? [...baseFiles].reverse() : baseFiles;
+  const ranks = humanColor === "b" ? [...baseRanks].reverse() : baseRanks;
   const legalTargets = selected
     ? chess.moves({ square: selected, verbose: true }).map(move => move.to)
     : [];
@@ -73,7 +122,7 @@ function render() {
       const piece = board[r][f];
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `square ${((r + f) % 2 === 0) ? "light" : "dark"}`;
+      button.className = `square ${squareColor(square)}`;
       if (selected === square) button.classList.add("selected");
       if (legalTargets.includes(square)) button.classList.add("target");
       button.dataset.square = square;
@@ -91,9 +140,19 @@ function render() {
       boardEl.appendChild(button);
     }
   }
-  turnText.textContent = chess.isGameOver()
-    ? `Game over: ${chess.isCheckmate() ? "checkmate" : chess.isDraw() ? "draw" : "ended"}`
-    : `${chess.turn() === "w" ? "White" : "Black"} to move`;
+  humanSideEl.textContent = colorName(humanColor);
+  tiberiusSideEl.textContent = colorName(tiberiusColor());
+  turnText.textContent = colorName(chess.turn());
+  resultTextEl.textContent = gameResult || (gameActive ? "In progress" : "Idle");
+  movesEl.textContent = chess.history().length ? chess.history().join(" ") : "(none)";
+  fenEl.textContent = chess.fen();
+  strategyLabelEl.textContent = lastStrategy;
+  statusEl.textContent = statusMessage;
+  if (chess.isGameOver() && !gameResult) {
+    gameResult = chess.isCheckmate() ? (chess.turn() === "w" ? "0-1" : "1-0") : "1/2-1/2";
+    gameActive = false;
+  }
+  syncSummary();
   setThinking(engineThinking);
 }
 
@@ -138,9 +197,100 @@ function savePhoneMemory() {
   } catch (_err) {}
 }
 
-function completeGameLearning() {
-  if (!chess.isGameOver() || !trajectory.length) return;
-  const score = whiteScore();
+function saveState() {
+  try {
+    localStorage.setItem(PHONE_STATE_KEY, JSON.stringify({
+      fen: chess.fen(),
+      humanColor,
+      gameActive,
+      gameResult,
+      statusMessage,
+      lastStrategy,
+      history: chess.history(),
+      trajectory,
+    }));
+  } catch (_err) {}
+}
+
+function loadSavedState() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PHONE_STATE_KEY));
+    if (!saved) return;
+    humanColor = saved.humanColor === "b" ? "b" : "w";
+    gameActive = Boolean(saved.gameActive);
+    gameResult = saved.gameResult || "";
+    statusMessage = saved.statusMessage || `Restored game. You are ${colorName(humanColor)}.`;
+    lastStrategy = saved.lastStrategy || lastStrategy;
+    trajectory = Array.isArray(saved.trajectory) ? saved.trajectory : [];
+    if (saved.fen) chess.load(saved.fen);
+  } catch (_err) {}
+}
+
+function readOutbox() {
+  try {
+    return JSON.parse(localStorage.getItem(PHONE_OUTBOX_KEY)) || [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+function writeOutbox(events) {
+  try {
+    localStorage.setItem(PHONE_OUTBOX_KEY, JSON.stringify(events.slice(-500)));
+  } catch (_err) {}
+}
+
+function queueSync(type, payload = {}) {
+  const event = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type,
+    payload,
+    fen: chess.fen(),
+    pgn: chess.pgn(),
+    human_color: colorName(humanColor),
+    tiberius_color: colorName(tiberiusColor()),
+    result: gameResult,
+    created_at: new Date().toISOString(),
+    source: "tiberius-phone-github-pages",
+  };
+  writeOutbox([...readOutbox(), event]);
+  flushSync();
+  syncSummary();
+}
+
+async function flushSync() {
+  const events = readOutbox();
+  if (!events.length) {
+    syncSummary();
+    return;
+  }
+  for (const endpoint of SYNC_ENDPOINTS) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ events }),
+      });
+      if (!response.ok) continue;
+      writeOutbox([]);
+      syncSummary();
+      return;
+    } catch (_err) {}
+  }
+  syncSummary();
+}
+
+function finishIfGameOver() {
+  if (!chess.isGameOver() || gameResult) return;
+  gameResult = chess.isCheckmate() ? (chess.turn() === "w" ? "0-1" : "1-0") : "1/2-1/2";
+  gameActive = false;
+  statusMessage = `Game over: ${gameResult}.`;
+  queueSync("game_complete", {});
+}
+
+function completeGameLearning(force = false) {
+  if (!trajectory.length || (!force && !chess.isGameOver() && !gameResult)) return;
+  const score = gameResult === "1-0" ? 1 : gameResult === "0-1" ? 0 : whiteScore();
   for (const item of trajectory) {
     learnMemory(phoneMemory, new Chess(item.fen), item.move, bucketForPosition(item.fen, score));
   }
@@ -151,9 +301,9 @@ function completeGameLearning() {
 }
 
 function onSquare(square) {
-  if (engineThinking || chess.turn() !== "w" || chess.isGameOver()) return;
+  if (engineThinking || !isHumanTurn() || chess.isGameOver()) return;
   const piece = chess.get(square);
-  const ownPiece = piece && piece.color === "w";
+  const ownPiece = piece && piece.color === humanColor;
 
   if (selected === square) {
     selected = null;
@@ -193,19 +343,28 @@ function predictionLine() {
 }
 
 function explainForHumanTurn() {
-  predictionTitle.textContent = "What I Think You Will Do";
-  predictionText.textContent = predictionLine();
-  preserveText.textContent = "Stockfish, when available, stays hidden as the anchor. Tiberius overlays memory, structure, safety, and pressure without handing you the answer.";
-  tradeoffText.textContent = "If you play the predicted move, you may be entering known territory. If you reject it, you still have to keep the position legal, safe, and coherent.";
-  puzzleText.textContent = "Break the prediction: change pawn tension, improve king safety, block the prepared line, or force Tiberius to answer your threat.";
+  const side = colorName(chess.turn());
+  puzzleTitleEl.textContent = isHumanTurn() ? "Your move" : "Tiberius is solving";
+  puzzleTextEl.textContent = isHumanTurn()
+    ? `${side[0].toUpperCase()}${side.slice(1)} to move. Find the cleanest improving move: gain space, improve a piece, or answer the threat without creating a new weakness.`
+    : `${side[0].toUpperCase()}${side.slice(1)} to move. Tiberius is looking for the strongest low-waste future, not just a flashy move.`;
+  whyTitleEl.textContent = "Why this works best";
+  whyTextEl.textContent = predictionLine();
+  whenTextEl.textContent = "Tiberius takes control if your move lets the hidden line stay stable or improves its eval on the next refresh.";
+  preserveText.textContent = "This position is being judged by Stockfish search first: eval, forced line, king exposure, material safety, and whether the best reply is forcing.";
+  tradeoffText.textContent = "If you reject the predicted pattern, Tiberius has to recalculate from the new board. If you play into it, you may be entering known territory.";
+  coachTextEl.textContent = "Puzzle for you: do not ask for the engine move. Ask what kind of position would make its prediction wrong: safer king, changed pawn tension, blocked line, or forcing counter-threat.";
 }
 
 async function afterHumanMove(move) {
   render();
-  predictionTitle.textContent = `You played ${move.san}`;
-  predictionText.textContent = "Tiberius is checking Stockfish if present, then choosing an overlay move on the phone.";
+  whyTitleEl.textContent = `After your ${move.san}`;
+  whyTextEl.textContent = "Tiberius has calculated a reply and is predicting the kind of move you are likely to allow next.";
+  whenTextEl.textContent = "Tiberius takes control if your move lets the hidden line stay stable or improves its eval on the next refresh.";
   if (chess.isGameOver()) {
+    finishIfGameOver();
     completeGameLearning();
+    saveState();
     render();
     return;
   }
@@ -233,33 +392,41 @@ async function engineMove() {
   const before = chess.fen();
   const played = chess.move(decision.move);
   rememberMove(before, played);
-  evalText.textContent = stockfishBest
+  statusMessage = stockfishBest
     ? `Stockfish anchor available. Tiberius chose ${played.san}.`
-    : `No Stockfish binary bundled yet. Tiberius chose ${played.san} from overlay heuristics.`;
-  predictionTitle.textContent = `Tiberius played ${played.san}`;
-  predictionText.textContent = predictionLine();
+    : `Tiberius chose ${played.san} from overlay heuristics while Stockfish boots.`;
+  whyTitleEl.textContent = `Tiberius chose ${played.san}`;
+  whyTextEl.textContent = `${predictionLine()} Separately, Stockfish/Tiberius is preserving a hidden search line from the current board.`;
+  whenTextEl.textContent = "Tiberius takes control when the opponent plays into the hidden prediction or when their reply worsens the eval. If they break the prediction, the next search has to prove control again from the new board.";
   preserveText.textContent = `It preserved overlay score ${decision.score.toFixed(3)} from ${before.split(" ")[0].slice(0, 18)}...`;
   tradeoffText.textContent = stockfishBest
     ? `Pure Stockfish anchor suggested ${stockfishBest}; Tiberius blended it with memory and structure.`
     : "This build is running the legal on-phone Tiberius overlay now. Drop in GPL Stockfish WASM to enable full Stockfish anchoring.";
-  puzzleText.textContent = "Tiberius just predicted your behavior from memory. Make the board stop matching the habit it expects.";
+  coachTextEl.textContent = "Puzzle for the opponent: Tiberius just named what it thinks you will do. If it is right, ask whether you are walking into habit. If it is wrong, make the move that changes the position class without hanging the eval.";
+  lastStrategy = stockfishBest && uci(played) === stockfishBest ? "Stockfish anchored / memory blended" : "Memory overlay deviation";
   setThinking(false);
+  finishIfGameOver();
   completeGameLearning();
+  saveState();
+  queueSync("move", { san: played.san, uci: uci(played), by: "tiberius" });
   render();
 }
 
 function submitMove() {
-  if (engineThinking || chess.turn() !== "w") return;
+  if (engineThinking || !isHumanTurn()) return;
   const text = moveInput.value.trim();
   if (!text) return;
   const beforeFen = chess.fen();
   const result = chess.move(text, { sloppy: true });
   if (!result) {
-    predictionTitle.textContent = "Illegal move";
-    predictionText.textContent = "Try SAN like Nf3 or UCI-like entry by tapping the board.";
+    whyTitleEl.textContent = "Illegal move";
+    whyTextEl.textContent = "Try SAN like Nf3, UCI like e2e4, or tap a piece and target square on the board.";
     return;
   }
   rememberMove(beforeFen, result);
+  statusMessage = `You played ${result.san}.`;
+  saveState();
+  queueSync("move", { san: result.san, uci: uci(result), by: "human" });
   moveInput.value = "";
   afterHumanMove(result);
 }
@@ -323,6 +490,7 @@ async function loadMemoryPhase(manifest, phase) {
 async function boot() {
   render();
   loadPhoneMemory();
+  loadSavedState();
   const manifest = await loadManifest();
   await loadMemoryPhase(manifest, "initial");
   refreshEngineStatus();
@@ -345,15 +513,45 @@ async function boot() {
     fullMemoryLoading = false;
     refreshEngineStatus();
   });
+
+  flushSync();
+  if (gameActive && !gameResult && !isHumanTurn()) {
+    engineMove();
+  }
 }
 
-newGameBtn.addEventListener("click", () => {
+function startNewGame(color) {
   chess.reset();
+  humanColor = color === "b" ? "b" : "w";
+  gameActive = true;
+  gameResult = "";
+  statusMessage = `New game started. You are ${colorName(humanColor)}.`;
+  lastStrategy = "Balanced / not enough moves yet";
   selected = null;
   trajectory = [];
+  moveInput.value = "";
   explainForHumanTurn();
+  saveState();
+  queueSync("new_game", { human_color: colorName(humanColor) });
   render();
-});
+  if (!isHumanTurn()) engineMove();
+}
+
+function concedeGame() {
+  if (!gameActive || gameResult || engineThinking) return;
+  gameResult = humanColor === "w" ? "0-1" : "1-0";
+  gameActive = false;
+  statusMessage = "You conceded.";
+  completeGameLearning(true);
+  saveState();
+  queueSync("concede", {});
+  render();
+}
+
+newWhiteBtn.addEventListener("click", () => startNewGame("w"));
+newBlackBtn.addEventListener("click", () => startNewGame("b"));
+concedeBtn.addEventListener("click", concedeGame);
+newGameBtn.addEventListener("click", () => startNewGame(humanColor));
 
 playBtn.addEventListener("click", submitMove);
 moveInput.addEventListener("keydown", event => {
