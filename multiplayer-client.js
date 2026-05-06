@@ -1,14 +1,35 @@
 const PLAYER_KEY = "tiberius-phone-player-v1";
 
+function canonicalHandle(name) {
+  const handle = String(name || "").trim().slice(0, 32);
+  return /^[A-Za-z0-9_-]{2,32}$/.test(handle) ? handle : "";
+}
+
+function normalizePlayerIdentity(player) {
+  const name = String(player?.name || "").trim().slice(0, 32);
+  const handle = canonicalHandle(name);
+  const id = handle || player?.id || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const aliases = new Set(Array.isArray(player?.aliases) ? player.aliases : []);
+  if (player?.id && player.id !== id) aliases.add(player.id);
+  if (name) aliases.add(name);
+  return {
+    id,
+    name,
+    handle: handle || "",
+    aliases: [...aliases].slice(0, 8),
+  };
+}
+
 function stableId() {
   try {
     const saved = JSON.parse(localStorage.getItem(PLAYER_KEY));
-    if (saved?.id) return saved;
+    if (saved?.id) {
+      const normalized = normalizePlayerIdentity(saved);
+      localStorage.setItem(PLAYER_KEY, JSON.stringify(normalized));
+      return normalized;
+    }
   } catch (_err) {}
-  const player = {
-    id: `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-    name: "",
-  };
+  const player = normalizePlayerIdentity({});
   try {
     localStorage.setItem(PLAYER_KEY, JSON.stringify(player));
   } catch (_err) {}
@@ -24,7 +45,7 @@ export class MultiplayerClient {
   }
 
   setName(name) {
-    this.player.name = String(name || "").trim().slice(0, 32);
+    this.player = normalizePlayerIdentity({ ...this.player, name });
     try {
       localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
     } catch (_err) {}
@@ -72,7 +93,7 @@ export class MultiplayerClient {
   }
 
   challenge({ target = "", targetName = "", random = false, inviterColor = "w", game }) {
-    return this.request("/challenge", { target, targetName, random, inviterColor, game });
+    return this.request("/challenge", { target, targetName, targetHandle: targetName || target, random, inviterColor, game });
   }
 
   poke({ target = "", random = false, game }) {

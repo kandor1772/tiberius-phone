@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=invite-flow";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=invite-flow";
-import { MultiplayerClient } from "./multiplayer-client.js?v=invite-flow";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=always-invites";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=always-invites";
+import { MultiplayerClient } from "./multiplayer-client.js?v=always-invites";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -38,7 +38,6 @@ const tradeoffText = document.getElementById("tradeoffText");
 const coachTextEl = document.getElementById("coachText");
 const syncTextEl = document.getElementById("syncText");
 const onlineNameInput = document.getElementById("onlineNameInput");
-const inviteNotifyBtn = document.getElementById("inviteNotifyBtn");
 const playerRosterEl = document.getElementById("playerRoster");
 const playHumanBtn = document.getElementById("playHumanBtn");
 const incomingChallengeEl = document.getElementById("incomingChallenge");
@@ -124,7 +123,6 @@ function setThinking(thinking) {
   const selectedPlayer = selectedPlayerId ? knownPlayers.find(player => player.id === selectedPlayerId) : null;
   playHumanBtn.disabled = thinking || isOnlineGame() || Boolean(selectedPlayer && !selectedPlayer.active);
   returnGameBtn.disabled = !latestReturnableGame();
-  inviteNotifyBtn.disabled = !("Notification" in window) || Notification.permission === "granted";
   acceptChallengeBtn.disabled = !incomingChallenge || !gameActive || Boolean(gameResult);
   declineChallengeBtn.disabled = !incomingChallenge;
 }
@@ -283,6 +281,12 @@ function notifyIncomingChallenge(challenge) {
       new Notification("Tiberius challenge", { body: `${from} wants to play.` });
     } catch (_err) {}
   }
+}
+
+function syncOnlineName({ heartbeat = false } = {}) {
+  const before = multiplayer.label();
+  multiplayer.setName(onlineNameInput.value);
+  if (heartbeat || multiplayer.label() !== before) heartbeatOnline();
 }
 
 function render() {
@@ -707,8 +711,14 @@ function handleOnlineResponse(data) {
     return;
   }
   if (Array.isArray(data.players)) mergePlayers(data.players);
-  if (Array.isArray(data.incoming) && data.incoming.length) {
-    incomingChallenge = data.incoming[0];
+  const incoming = Array.isArray(data.incoming) ? data.incoming
+    : Array.isArray(data.invites) ? data.invites
+    : Array.isArray(data.invitations) ? data.invitations
+    : data.challenge ? [data.challenge]
+    : data.invite ? [data.invite]
+    : [];
+  if (incoming.length) {
+    incomingChallenge = incoming[0];
     notifyIncomingChallenge(incomingChallenge);
   }
   if (Array.isArray(data.events)) {
@@ -726,6 +736,7 @@ function handleOnlineResponse(data) {
 }
 
 async function heartbeatOnline() {
+  multiplayer.setName(onlineNameInput.value);
   const data = await multiplayer.heartbeat(gameSnapshot());
   handleOnlineResponse(data);
 }
@@ -756,6 +767,7 @@ async function sendChallenge(random, target = "") {
 }
 
 function playHuman() {
+  syncOnlineName();
   if (isOnlineGame()) {
     onlineNotice = "You are already in a human game. Incoming invites can interrupt it, but outgoing invites are disabled.";
     render();
@@ -1135,17 +1147,11 @@ returnGameBtn.addEventListener("click", () => {
   if (game) loadGameRecord(game);
 });
 onlineNameInput.addEventListener("change", () => {
-  multiplayer.setName(onlineNameInput.value);
-  heartbeatOnline();
+  syncOnlineName({ heartbeat: true });
   render();
 });
+onlineNameInput.addEventListener("blur", () => syncOnlineName({ heartbeat: true }));
 playHumanBtn.addEventListener("click", playHuman);
-inviteNotifyBtn.addEventListener("click", async () => {
-  if (!("Notification" in window)) return;
-  const permission = await Notification.requestPermission();
-  onlineNotice = permission === "granted" ? "Invite notifications enabled." : "Invite notifications are blocked.";
-  render();
-});
 acceptChallengeBtn.addEventListener("click", () => answerChallenge(true));
 declineChallengeBtn.addEventListener("click", () => answerChallenge(false));
 
