@@ -71,8 +71,8 @@ export class MultiplayerClient {
     return this.request("/heartbeat", state, 2600);
   }
 
-  challenge({ target = "", random = false, game }) {
-    return this.request("/challenge", { target, random, game });
+  challenge({ target = "", targetName = "", random = false, inviterColor = "w", game }) {
+    return this.request("/challenge", { target, targetName, random, inviterColor, game });
   }
 
   poke({ target = "", random = false, game }) {
@@ -85,5 +85,9 @@ export class MultiplayerClient {
 
   move({ gameId, move, fen, pgn }) {
     return this.request("/game/move", { gameId, move, fen, pgn }, 2600);
+  }
+
+  forfeit({ gameId, reason = "interrupted" }) {
+    return this.request("/game/forfeit", { gameId, reason }, 2600);
   }
 }

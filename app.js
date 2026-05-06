@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=active-roster";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=active-roster";
-import { MultiplayerClient } from "./multiplayer-client.js?v=active-roster";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=invite-flow";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=invite-flow";
+import { MultiplayerClient } from "./multiplayer-client.js?v=invite-flow";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -72,6 +72,7 @@ let incomingChallenge = null;
 let onlineNotice = "";
 let selectedPlayerId = "";
 let lastNotifiedChallengeId = "";
+let suspendedGameId = "";
 let knownPlayers = [
   { id: "RP", name: "RP", active: true, seeded: true },
   { id: "rick", name: "rick", active: true, seeded: true },
@@ -80,6 +81,7 @@ let knownPlayers = [
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
 const PHONE_STATE_KEY = "tiberius-phone-state-v5-core";
 const SAVED_GAMES_KEY = "tiberius-phone-saved-games-v1";
+const SUSPENDED_GAME_KEY = "tiberius-phone-suspended-game-v1";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
 const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 const MULTIPLAYER_ENDPOINTS = ["https://eltiburon.duckdns.org/api/multiplayer"];
@@ -200,7 +202,9 @@ function gameSnapshot() {
 
 function onlineSummary() {
   const relay = multiplayer.connected ? "Relay connected" : "Relay not connected";
-  const available = gameActive && !gameResult ? "available while playing" : "unavailable until a board is active";
+  const available = isOnlineGame()
+    ? "busy in a human game; incoming invites can interrupt, outgoing invites are disabled"
+    : gameActive && !gameResult ? "available for human invites" : "unavailable until a board is active";
   const opponent = onlineGame ? ` Online game vs ${onlineGame.opponent || "player"}.` : "";
   const selectedPlayer = selectedPlayerId ? knownPlayers.find(player => player.id === selectedPlayerId) : null;
   const selected = selectedPlayer
@@ -210,7 +214,10 @@ function onlineSummary() {
   onlineStatusEl.textContent = `${relay}. ${multiplayer.label()} is ${available}.${opponent}${selected}${notice}`;
   incomingChallengeEl.classList.toggle("hidden", !incomingChallenge);
   if (incomingChallenge) {
-    incomingTextEl.textContent = `${incomingChallenge.from_name || incomingChallenge.from || "A player"} wants to interrupt this game.`;
+    const from = incomingChallenge.from_name || incomingChallenge.from || "A player";
+    incomingTextEl.textContent = isOnlineGame()
+      ? `${from} wants to play. Accepting forfeits your current human game and starts a clean board.`
+      : `${from} wants to play. Accepting pauses Tiberius and starts a clean board.`;
   }
   renderRoster();
 }
@@ -252,8 +259,8 @@ function renderRoster() {
     button.className = `player-row ${player.active ? "active" : "inactive"}`;
     if (player.id === selectedPlayerId) button.classList.add("selected-player");
     button.dataset.playerId = player.id;
-    button.disabled = !player.active;
-    button.setAttribute("aria-disabled", String(!player.active));
+    button.disabled = isOnlineGame() || !player.active;
+    button.setAttribute("aria-disabled", String(button.disabled));
     button.innerHTML = `<span>${player.name}</span><strong>${player.active ? "active" : "inactive"}</strong>`;
     button.addEventListener("click", () => {
       if (!player.active) return;
@@ -412,6 +419,60 @@ function latestReturnableGame() {
   return readSavedGames().find(game => game.id !== currentGameId && game.status !== "complete") || null;
 }
 
+function savedGameById(id) {
+  if (!id) return null;
+  return readSavedGames().find(game => game.id === id) || null;
+}
+
+function rememberSuspendedGame() {
+  if (isOnlineGame()) return false;
+  ensureGameId();
+  if (!suspendedGameId) {
+    suspendedGameId = currentGameId;
+    try {
+      localStorage.setItem(SUSPENDED_GAME_KEY, suspendedGameId);
+    } catch (_err) {}
+  }
+  saveState("suspended_for_human", { sync: true });
+  return true;
+}
+
+function clearSuspendedGame() {
+  suspendedGameId = "";
+  try {
+    localStorage.removeItem(SUSPENDED_GAME_KEY);
+  } catch (_err) {}
+}
+
+function suspendedGameRecord() {
+  if (!suspendedGameId) {
+    try {
+      suspendedGameId = localStorage.getItem(SUSPENDED_GAME_KEY) || "";
+    } catch (_err) {}
+  }
+  return savedGameById(suspendedGameId);
+}
+
+function returnToSuspendedGame(message = "Human game ended. Returned to Tiberius.") {
+  const record = suspendedGameRecord();
+  clearSuspendedGame();
+  onlineGame = null;
+  incomingChallenge = null;
+  selectedPlayerId = "";
+  onlineNotice = "";
+  if (record) {
+    loadGameRecord(record);
+    statusMessage = message;
+    saveState("return_from_human", { sync: true });
+    render();
+    if (gameActive && !gameResult && !isHumanTurn()) engineMove();
+    return;
+  }
+  statusMessage = "Human game ended. Start or resume a Tiberius game.";
+  saveState("human_game_closed", { sync: true });
+  render();
+}
+
 function saveState(reason = "progress", { sync = true } = {}) {
   const record = gameRecord(reason);
   try {
@@ -561,27 +622,60 @@ async function flushSync() {
   syncSummary();
 }
 
-function enterOnlineGame(game) {
+async function forfeitCurrentHumanGame(reason = "interrupted", { returnAfter = false } = {}) {
+  if (!isOnlineGame()) return;
+  const forfeitedGame = onlineGame;
+  gameResult = humanColor === "w" ? "0-1" : "1-0";
+  gameActive = false;
+  statusMessage = `Forfeited human game against ${forfeitedGame.opponent}.`;
+  saveState("human_forfeit", { sync: true });
+  queueSync("human_game_forfeit", {
+    game_id: forfeitedGame.id,
+    opponent: forfeitedGame.opponent,
+    reason,
+  });
+  try {
+    await multiplayer.forfeit({ gameId: forfeitedGame.id, reason });
+  } catch (_err) {}
+  if (returnAfter) returnToSuspendedGame("You conceded the human game. Returned to Tiberius.");
+}
+
+function inferOnlineColor(game, role = "relay") {
+  if (role === "accepter") return "b";
+  if (role === "inviter") return "w";
+  if (game.color === "b" || game.color === "black") return "b";
+  if (game.color === "w" || game.color === "white") return "w";
+  if (game.inviter_id && game.inviter_id === multiplayer.player.id) return "w";
+  if (game.accepter_id && game.accepter_id === multiplayer.player.id) return "b";
+  return "w";
+}
+
+function enterOnlineGame(game, role = "relay") {
   if (!game?.id) return;
   gameSerial += 1;
+  const color = inferOnlineColor(game, role);
   onlineGame = {
     id: game.id,
     opponent: game.opponent_name || game.opponent || "player",
-    color: game.color === "b" ? "b" : "w",
+    color,
   };
   humanColor = onlineGame.color;
-  if (game.fen) {
-    chess.load(game.fen);
-  } else {
-    chess.reset();
-  }
+  currentGameId = `human-${game.id}`;
+  chess.reset();
   gameActive = true;
   gameResult = "";
   selected = null;
   engineThinking = false;
-  statusMessage = `Online game started against ${onlineGame.opponent}.`;
-  onlineNotice = "Tiberius paused; waiting on human moves.";
-  saveState();
+  trajectory = [];
+  statusMessage = `Human game started against ${onlineGame.opponent}. You are ${colorName(humanColor)}.`;
+  onlineNotice = "Tiberius paused; this human game starts from a clean board.";
+  saveState("human_game_start");
+  queueSync("human_game_start", {
+    game_id: onlineGame.id,
+    opponent: onlineGame.opponent,
+    human_color: colorName(humanColor),
+    inviter_color: "white",
+  });
   render();
 }
 
@@ -598,6 +692,11 @@ function applyRemoteMove(event) {
   statusMessage = `${onlineGame.opponent} played ${played.san}.`;
   finishIfGameOver();
   saveState();
+  if (gameResult) {
+    completeGameLearning();
+    returnToSuspendedGame();
+    return;
+  }
   render();
 }
 
@@ -632,13 +731,36 @@ async function heartbeatOnline() {
 }
 
 async function sendChallenge(random, target = "") {
+  if (isOnlineGame()) {
+    onlineNotice = "Finish or forfeit the current human game before sending another invite.";
+    render();
+    return;
+  }
+  rememberSuspendedGame();
+  const targetName = target ? playerLabel(target) : "";
   onlineNotice = random ? "Looking for a random human player..." : `Looking for ${target || "player"}...`;
   render();
-  const data = await multiplayer.challenge({ target, random, game: gameSnapshot() });
+  queueSync("human_invite_sent", { target, target_name: targetName, random, inviter_color: "white" });
+  const data = await multiplayer.challenge({
+    target,
+    targetName,
+    random,
+    inviterColor: "w",
+    game: gameSnapshot(),
+  });
+  if (data?.game) {
+    enterOnlineGame(data.game, "inviter");
+    return;
+  }
   handleOnlineResponse(data);
 }
 
 function playHuman() {
+  if (isOnlineGame()) {
+    onlineNotice = "You are already in a human game. Incoming invites can interrupt it, but outgoing invites are disabled.";
+    render();
+    return;
+  }
   saveState("human_matchmaking");
   const target = selectedPlayerId;
   const selectedPlayer = target ? knownPlayers.find(player => player.id === target) : null;
@@ -652,11 +774,30 @@ function playHuman() {
 
 async function answerChallenge(accept) {
   if (!incomingChallenge) return;
+  const challenge = incomingChallenge;
   const challengeId = incomingChallenge.id || incomingChallenge.challenge_id;
   onlineNotice = accept ? "Accepting challenge..." : "Declining challenge.";
   const data = await multiplayer.respond({ challengeId, accept });
-  if (!accept) incomingChallenge = null;
-  handleOnlineResponse(data);
+  if (!accept) {
+    incomingChallenge = null;
+    handleOnlineResponse(data);
+    return;
+  }
+  if (isOnlineGame()) {
+    await forfeitCurrentHumanGame("accepted_new_invite", { returnAfter: false });
+  } else {
+    rememberSuspendedGame();
+  }
+  incomingChallenge = null;
+  const fallbackGame = {
+    id: challenge.game_id || challengeId || makeGameId(),
+    opponent: challenge.from_name || challenge.from || "player",
+    opponent_name: challenge.from_name || challenge.from || "player",
+    inviter_id: challenge.from,
+    accepter_id: multiplayer.player.id,
+  };
+  enterOnlineGame(data?.game || fallbackGame, "accepter");
+  if (data) handleOnlineResponse({ ...data, game: null });
 }
 
 function finishIfGameOver() {
@@ -664,7 +805,10 @@ function finishIfGameOver() {
   gameResult = chess.isCheckmate() ? (chess.turn() === "w" ? "0-1" : "1-0") : "1/2-1/2";
   gameActive = false;
   statusMessage = `Game over: ${gameResult}.`;
-  queueSync("game_complete", {});
+  queueSync(isOnlineGame() ? "human_game_complete" : "game_complete", {
+    online_game_id: onlineGame?.id || null,
+    opponent: onlineGame?.opponent || null,
+  });
 }
 
 function completeGameLearning(force = false) {
@@ -753,16 +897,23 @@ async function afterHumanMove(move) {
     ? "Move sent to the online relay. Tiberius is paused while the other player answers."
     : "Tiberius has calculated a reply and is predicting the kind of move you are likely to allow next.";
   whenTextEl.textContent = "Tiberius takes control if your move lets the hidden line stay stable or improves its eval on the next refresh.";
-  if (chess.isGameOver()) {
-    finishIfGameOver();
-    completeGameLearning();
+  if (isOnlineGame()) {
+    onlineNotice = `Sent ${move.san}; waiting for ${onlineGame.opponent}.`;
+    await multiplayer.move({ gameId: onlineGame.id, move: { san: move.san, uci: uci(move) }, fen: chess.fen(), pgn: chess.pgn() });
+    if (chess.isGameOver()) {
+      finishIfGameOver();
+      completeGameLearning();
+      saveState();
+      returnToSuspendedGame();
+      return;
+    }
     saveState();
     render();
     return;
   }
-  if (isOnlineGame()) {
-    onlineNotice = `Sent ${move.san}; waiting for ${onlineGame.opponent}.`;
-    await multiplayer.move({ gameId: onlineGame.id, move: { san: move.san, uci: uci(move) }, fen: chess.fen(), pgn: chess.pgn() });
+  if (chess.isGameOver()) {
+    finishIfGameOver();
+    completeGameLearning();
     saveState();
     render();
     return;
@@ -933,7 +1084,7 @@ async function boot() {
 
   flushSync();
   heartbeatOnline();
-  setInterval(heartbeatOnline, 25000);
+  setInterval(heartbeatOnline, 10000);
   if (gameActive && !gameResult && !isHumanTurn()) {
     engineMove();
   }
@@ -959,8 +1110,12 @@ function startNewGame(color) {
   if (!isHumanTurn()) engineMove();
 }
 
-function concedeGame() {
+async function concedeGame() {
   if (!gameActive || gameResult || engineThinking) return;
+  if (isOnlineGame()) {
+    await forfeitCurrentHumanGame("conceded", { returnAfter: true });
+    return;
+  }
   gameResult = humanColor === "w" ? "0-1" : "1-0";
   gameActive = false;
   onlineGame = null;
