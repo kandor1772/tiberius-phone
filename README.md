@@ -18,12 +18,19 @@ What runs on the phone:
 - Full packaged Tiberius memory loaded from `tiberius-memory-full.json.gz`
 - Lite memory fallback if the browser cannot load the compressed full pack
 - Optional live memory sources from `memory-sources.json`
-- Completed phone games learned into browser local storage
-- DuckDNS-linked sync outbox for future shared Tiberius memory ingestion
+- Every active and completed game saved into browser local storage with FEN, PGN, move history, side, status, result, and timestamps
+- Tiberius-core sync outbox for game progress, moves, concessions, and completed games
 - Start as White, start as Black, concede, reset board, move list, FEN, and analysis panels
+- Saved Games panel to resume recent games
 - DuckDNS-style Black start: Tiberius waits for the Stockfish anchor before making White's first move
 - Black-side board orientation uses the actual square lookup for each flipped coordinate, so the visible board and legal move targets match
 - Online challenge panel for random/specific players, poke/tap requests, anonymous identity, and interrupt-to-accept flow
+
+Game Persistence:
+
+- The app keeps the current game and recent games locally so interrupted sessions can be resumed.
+- Every progress update is also queued to `https://eltiburon.duckdns.org/api/phone-sync` for Tiberius core ingestion.
+- If the core endpoint is offline, updates remain queued locally and retry on later app activity.
 
 Multiplayer:
 

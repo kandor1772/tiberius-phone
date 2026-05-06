@@ -27,7 +27,8 @@ It contains:
 - full packaged Tiberius memory as a compressed JSON file
 - a lite memory fallback for fast boot
 - browser local storage for continuing games and learning completed phone games
-- a DuckDNS-linked sync outbox that queues events until a compatible receiver exists
+- browser local storage for a resumable recent-games list with FEN, PGN, move history, result, side, opponent, and timestamps
+- a Tiberius-core sync outbox that queues game progress and completed-game updates until a compatible receiver exists
 - a multiplayer panel for random/specific challenges, pokes, anonymous players, and interrupt-to-accept flow
 
 ## File Map

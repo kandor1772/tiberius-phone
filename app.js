@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=black-state-parity";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=black-state-parity";
-import { MultiplayerClient } from "./multiplayer-client.js?v=multiplayer-ready";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=core-save";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=core-save";
+import { MultiplayerClient } from "./multiplayer-client.js?v=core-save";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -23,6 +23,8 @@ const opponentLabelEl = document.getElementById("opponentLabel");
 const turnText = document.getElementById("turnText");
 const resultTextEl = document.getElementById("resultText");
 const movesEl = document.getElementById("moves");
+const saveStatusEl = document.getElementById("saveStatus");
+const savedGamesEl = document.getElementById("savedGames");
 const fenEl = document.getElementById("fen");
 const strategyLabelEl = document.getElementById("strategyLabel");
 const puzzleTitleEl = document.getElementById("puzzleTitle");
@@ -65,12 +67,14 @@ let gameResult = "";
 let statusMessage = "New game started. You are black.";
 let lastStrategy = "Balanced / not enough moves yet";
 let gameSerial = 0;
+let currentGameId = "";
 let onlineGame = null;
 let incomingChallenge = null;
 let onlineNotice = "";
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
-const PHONE_STATE_KEY = "tiberius-phone-state-v4-black";
+const PHONE_STATE_KEY = "tiberius-phone-state-v5-core";
+const SAVED_GAMES_KEY = "tiberius-phone-saved-games-v1";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
 const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 const MULTIPLAYER_ENDPOINTS = ["https://eltiburon.duckdns.org/api/multiplayer"];
@@ -86,6 +90,15 @@ function colorName(color) {
 
 function tiberiusColor() {
   return humanColor === "w" ? "b" : "w";
+}
+
+function makeGameId() {
+  return `game-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function ensureGameId() {
+  if (!currentGameId) currentGameId = makeGameId();
+  return currentGameId;
 }
 
 function isHumanTurn() {
@@ -158,19 +171,26 @@ function squareColor(square) {
 function syncSummary() {
   const pending = readOutbox().length;
   syncTextEl.textContent = pending
-    ? `Linked to DuckDNS. ${pending} event${pending === 1 ? "" : "s"} queued until a Tiberius sync endpoint accepts them.`
-    : "Linked to DuckDNS. Phone outbox is clear.";
+    ? `Linked to Tiberius core. ${pending} game update${pending === 1 ? "" : "s"} queued until the core accepts them.`
+    : "Linked to Tiberius core. All game updates are sent.";
 }
 
 function gameSnapshot() {
+  const id = ensureGameId();
   return {
+    id,
     active: gameActive && !gameResult,
+    status: gameResult ? "complete" : gameActive ? "active" : "idle",
     game_id: onlineGame?.id || null,
     fen: chess.fen(),
     pgn: chess.pgn(),
     human_color: colorName(humanColor),
+    opponent_color: colorName(tiberiusColor()),
+    opponent: isOnlineGame() ? onlineGame.opponent : "Tiberius",
+    result: gameResult,
     turn: colorName(chess.turn()),
     moves: chess.history(),
+    updated_at: new Date().toISOString(),
   };
 }
 
@@ -239,6 +259,7 @@ function render() {
   }
   syncSummary();
   onlineSummary();
+  renderSavedGames();
   setThinking(engineThinking);
 }
 
@@ -283,9 +304,43 @@ function savePhoneMemory() {
   } catch (_err) {}
 }
 
-function saveState() {
+function readSavedGames() {
+  try {
+    return JSON.parse(localStorage.getItem(SAVED_GAMES_KEY)) || [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+function writeSavedGames(games) {
+  try {
+    localStorage.setItem(SAVED_GAMES_KEY, JSON.stringify(games.slice(0, 40)));
+  } catch (_err) {}
+}
+
+function gameRecord(reason = "progress") {
+  const snapshot = gameSnapshot();
+  return {
+    ...snapshot,
+    reason,
+    saved_at: new Date().toISOString(),
+    last_strategy: lastStrategy,
+    status_message: statusMessage,
+    trajectory,
+    online_game: onlineGame,
+  };
+}
+
+function upsertSavedGame(record) {
+  const games = readSavedGames().filter(game => game.id !== record.id);
+  writeSavedGames([record, ...games]);
+}
+
+function saveState(reason = "progress", { sync = true } = {}) {
+  const record = gameRecord(reason);
   try {
     localStorage.setItem(PHONE_STATE_KEY, JSON.stringify({
+      gameId: currentGameId,
       fen: chess.fen(),
       humanColor,
       gameActive,
@@ -294,17 +349,23 @@ function saveState() {
       lastStrategy,
       history: chess.history(),
       trajectory,
+      onlineGame,
     }));
   } catch (_err) {}
+  upsertSavedGame(record);
+  renderSavedGames();
+  if (sync) queueSync("game_progress", { reason, game: record });
 }
 
 function loadSavedState() {
   try {
     const saved = JSON.parse(localStorage.getItem(PHONE_STATE_KEY));
     if (!saved) return false;
+    currentGameId = saved.gameId || makeGameId();
     humanColor = saved.humanColor === "b" ? "b" : "w";
     gameActive = Boolean(saved.gameActive);
     gameResult = saved.gameResult || "";
+    onlineGame = saved.onlineGame || null;
     statusMessage = saved.statusMessage || `Restored game. You are ${colorName(humanColor)}.`;
     lastStrategy = saved.lastStrategy || lastStrategy;
     trajectory = Array.isArray(saved.trajectory) ? saved.trajectory : [];
@@ -320,6 +381,51 @@ function loadSavedState() {
   return false;
 }
 
+function loadGameRecord(record) {
+  if (!record?.id) return;
+  gameSerial += 1;
+  currentGameId = record.id;
+  humanColor = record.human_color === "white" ? "w" : "b";
+  gameActive = record.status !== "complete";
+  gameResult = record.result || "";
+  onlineGame = record.online_game || null;
+  statusMessage = `Restored ${record.id}.`;
+  lastStrategy = record.last_strategy || lastStrategy;
+  trajectory = Array.isArray(record.trajectory) ? record.trajectory : [];
+  selected = null;
+  engineThinking = false;
+  chess.reset();
+  if (Array.isArray(record.moves) && record.moves.length) {
+    for (const move of record.moves) chess.move(move, { sloppy: true });
+    if (record.fen && chess.fen() !== record.fen) chess.load(record.fen);
+  } else if (record.fen) {
+    chess.load(record.fen);
+  }
+  saveState("resume", { sync: false });
+  render();
+}
+
+function renderSavedGames() {
+  if (!savedGamesEl || !saveStatusEl) return;
+  const games = readSavedGames();
+  saveStatusEl.textContent = `${ensureGameId()} saved locally. ${readOutbox().length} core update${readOutbox().length === 1 ? "" : "s"} queued.`;
+  savedGamesEl.innerHTML = "";
+  for (const game of games.slice(0, 6)) {
+    const row = document.createElement("div");
+    row.className = "saved-game-row";
+    const label = document.createElement("span");
+    label.textContent = `${game.status || "active"} · ${game.moves?.length || 0} moves · ${new Date(game.saved_at || game.updated_at || Date.now()).toLocaleString()}`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "mini-action";
+    button.textContent = game.id === currentGameId ? "Current" : "Resume";
+    button.disabled = game.id === currentGameId;
+    button.addEventListener("click", () => loadGameRecord(game));
+    row.append(label, button);
+    savedGamesEl.appendChild(row);
+  }
+}
+
 function readOutbox() {
   try {
     return JSON.parse(localStorage.getItem(PHONE_OUTBOX_KEY)) || [];
@@ -330,15 +436,18 @@ function readOutbox() {
 
 function writeOutbox(events) {
   try {
-    localStorage.setItem(PHONE_OUTBOX_KEY, JSON.stringify(events.slice(-500)));
+    localStorage.setItem(PHONE_OUTBOX_KEY, JSON.stringify(events.slice(-2000)));
   } catch (_err) {}
 }
 
 function queueSync(type, payload = {}) {
+  const snapshot = gameSnapshot();
   const event = {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     type,
     payload,
+    game_id: snapshot.id,
+    game: snapshot,
     fen: chess.fen(),
     pgn: chess.pgn(),
     human_color: colorName(humanColor),
@@ -746,6 +855,7 @@ async function boot() {
 
 function startNewGame(color) {
   gameSerial += 1;
+  currentGameId = makeGameId();
   chess.reset();
   humanColor = color === "b" ? "b" : "w";
   gameActive = true;

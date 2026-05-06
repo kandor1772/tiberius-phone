@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v13-multiplayer-ready";
+const CACHE = "tiberius-phone-v14-core-save";
 const ASSETS = [
   "./",
   "index.html",

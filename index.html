@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <title>Tiberius</title>
-  <link rel="stylesheet" href="style.css?v=multiplayer-ready">
+  <link rel="stylesheet" href="style.css?v=core-save">
 </head>
 <body>
   <main class="app-shell">
@@ -57,6 +57,12 @@
       <article>
         <strong>Moves</strong>
         <pre id="moves" class="moves">(none)</pre>
+      </article>
+
+      <article>
+        <strong>Saved Games</strong>
+        <div id="saveStatus" class="small">Saving current game...</div>
+        <div id="savedGames" class="saved-games"></div>
       </article>
 
       <article>
@@ -132,6 +138,6 @@
     </section>
   </main>
 
-  <script type="module" src="app.js?v=multiplayer-ready"></script>
+  <script type="module" src="app.js?v=core-save"></script>
 </body>
 </html>
