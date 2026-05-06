@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=always-invites";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=always-invites";
-import { MultiplayerClient } from "./multiplayer-client.js?v=always-invites";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=board-invite";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=board-invite";
+import { MultiplayerClient } from "./multiplayer-client.js?v=board-invite";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
