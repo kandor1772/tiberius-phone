@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=board-invite";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=board-invite";
-import { MultiplayerClient } from "./multiplayer-client.js?v=board-invite";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
+import { MultiplayerClient } from "./multiplayer-client.js?v=local-relay";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -83,7 +83,11 @@ const SAVED_GAMES_KEY = "tiberius-phone-saved-games-v1";
 const SUSPENDED_GAME_KEY = "tiberius-phone-suspended-game-v1";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
 const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
-const MULTIPLAYER_ENDPOINTS = ["https://eltiburon.duckdns.org/api/multiplayer"];
+const MULTIPLAYER_ENDPOINTS = [
+  "https://eltiburon.duckdns.org/api/multiplayer",
+  "http://127.0.0.1:8776/api/multiplayer",
+  "http://localhost:8776/api/multiplayer",
+];
 const multiplayer = new MultiplayerClient({ endpoints: MULTIPLAYER_ENDPOINTS });
 
 function uci(move) {
