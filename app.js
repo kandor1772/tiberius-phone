@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
-import { MultiplayerClient } from "./multiplayer-client.js?v=rename-handle";
+import { MultiplayerClient } from "./multiplayer-client.js?v=roster-rename";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -268,7 +268,16 @@ function mergePlayers(players = []) {
 function renderRoster() {
   if (!playerRosterEl) return;
   playerRosterEl.innerHTML = "";
-  for (const player of knownPlayers) {
+  const self = currentPlayerRecord();
+  const roster = [
+    self,
+    ...knownPlayers.filter(player => (
+      player.id !== self.id
+      && player.id !== "RP"
+      && player.name !== "RP"
+    )),
+  ];
+  for (const player of roster) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `player-row ${player.active ? "active" : "inactive"}`;
@@ -1122,6 +1131,7 @@ async function loadMemoryPhase(manifest, phase) {
 
 async function boot() {
   onlineNameInput.value = multiplayer.player.name || "";
+  mergePlayers([]);
   render();
   loadPhoneMemory();
   const restored = loadSavedState();
