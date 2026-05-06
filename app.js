@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=core-save";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=core-save";
-import { MultiplayerClient } from "./multiplayer-client.js?v=core-save";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=human-play-simple";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-play-simple";
+import { MultiplayerClient } from "./multiplayer-client.js?v=human-play-simple";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -12,6 +12,7 @@ const boardEl = document.getElementById("board");
 const engineStatusEl = document.getElementById("engineStatus");
 const statusEl = document.getElementById("status");
 const newGameBtn = document.getElementById("newGameBtn");
+const returnGameBtn = document.getElementById("returnGameBtn");
 const newWhiteBtn = document.getElementById("newWhiteBtn");
 const newBlackBtn = document.getElementById("newBlackBtn");
 const concedeBtn = document.getElementById("concedeBtn");
@@ -38,10 +39,7 @@ const coachTextEl = document.getElementById("coachText");
 const syncTextEl = document.getElementById("syncText");
 const onlineNameInput = document.getElementById("onlineNameInput");
 const challengeTargetInput = document.getElementById("challengeTargetInput");
-const challengeRandomBtn = document.getElementById("challengeRandomBtn");
-const challengeSpecificBtn = document.getElementById("challengeSpecificBtn");
-const pokeRandomBtn = document.getElementById("pokeRandomBtn");
-const pokeSpecificBtn = document.getElementById("pokeSpecificBtn");
+const playHumanBtn = document.getElementById("playHumanBtn");
 const incomingChallengeEl = document.getElementById("incomingChallenge");
 const incomingTextEl = document.getElementById("incomingText");
 const acceptChallengeBtn = document.getElementById("acceptChallengeBtn");
@@ -114,11 +112,8 @@ function setThinking(thinking) {
   playBtn.disabled = thinking || !isHumanTurn();
   moveInput.disabled = playBtn.disabled;
   concedeBtn.disabled = !gameActive || thinking || Boolean(gameResult);
-  const canChallenge = gameActive && !gameResult;
-  challengeRandomBtn.disabled = !canChallenge;
-  pokeRandomBtn.disabled = !canChallenge;
-  challengeSpecificBtn.disabled = !canChallenge || !challengeTargetInput.value.trim();
-  pokeSpecificBtn.disabled = !canChallenge || !challengeTargetInput.value.trim();
+  playHumanBtn.disabled = thinking || isOnlineGame();
+  returnGameBtn.disabled = !latestReturnableGame();
   acceptChallengeBtn.disabled = !incomingChallenge || !gameActive || Boolean(gameResult);
   declineChallengeBtn.disabled = !incomingChallenge;
 }
@@ -336,6 +331,10 @@ function upsertSavedGame(record) {
   writeSavedGames([record, ...games]);
 }
 
+function latestReturnableGame() {
+  return readSavedGames().find(game => game.id !== currentGameId && game.status !== "complete") || null;
+}
+
 function saveState(reason = "progress", { sync = true } = {}) {
   const record = gameRecord(reason);
   try {
@@ -409,6 +408,8 @@ function renderSavedGames() {
   if (!savedGamesEl || !saveStatusEl) return;
   const games = readSavedGames();
   saveStatusEl.textContent = `${ensureGameId()} saved locally. ${readOutbox().length} core update${readOutbox().length === 1 ? "" : "s"} queued.`;
+  const returnable = latestReturnableGame();
+  returnGameBtn.textContent = returnable ? "Return to Game" : "No Saved Game";
   savedGamesEl.innerHTML = "";
   for (const game of games.slice(0, 6)) {
     const row = document.createElement("div");
@@ -535,7 +536,7 @@ function handleOnlineResponse(data) {
   if (Array.isArray(data.events)) {
     for (const event of data.events) {
       if (event.type === "move") applyRemoteMove(event);
-      if (event.type === "challenge" || event.type === "poke") incomingChallenge = event;
+      if (event.type === "challenge") incomingChallenge = event;
     }
   }
   if (data.game) enterOnlineGame(data.game);
@@ -550,18 +551,16 @@ async function heartbeatOnline() {
 
 async function sendChallenge(random) {
   const target = random ? "" : challengeTargetInput.value.trim();
-  onlineNotice = random ? "Looking for a random active player..." : `Challenging ${target || "player"}...`;
+  onlineNotice = random ? "Looking for a random human player..." : `Looking for ${target || "player"}...`;
   render();
   const data = await multiplayer.challenge({ target, random, game: gameSnapshot() });
   handleOnlineResponse(data);
 }
 
-async function sendPoke(random) {
-  const target = random ? "" : challengeTargetInput.value.trim();
-  onlineNotice = random ? "Tapping a random active player..." : `Tapping ${target || "player"}...`;
-  render();
-  const data = await multiplayer.poke({ target, random, game: gameSnapshot() });
-  handleOnlineResponse(data);
+function playHuman() {
+  saveState("human_matchmaking");
+  const target = challengeTargetInput.value.trim();
+  sendChallenge(!target);
 }
 
 async function answerChallenge(accept) {
@@ -889,16 +888,17 @@ newWhiteBtn.addEventListener("click", () => startNewGame("w"));
 newBlackBtn.addEventListener("click", () => startNewGame("b"));
 concedeBtn.addEventListener("click", concedeGame);
 newGameBtn.addEventListener("click", () => startNewGame(humanColor));
+returnGameBtn.addEventListener("click", () => {
+  const game = latestReturnableGame();
+  if (game) loadGameRecord(game);
+});
 onlineNameInput.addEventListener("change", () => {
   multiplayer.setName(onlineNameInput.value);
   heartbeatOnline();
   render();
 });
 challengeTargetInput.addEventListener("input", () => render());
-challengeRandomBtn.addEventListener("click", () => sendChallenge(true));
-challengeSpecificBtn.addEventListener("click", () => sendChallenge(false));
-pokeRandomBtn.addEventListener("click", () => sendPoke(true));
-pokeSpecificBtn.addEventListener("click", () => sendPoke(false));
+playHumanBtn.addEventListener("click", playHuman);
 acceptChallengeBtn.addEventListener("click", () => answerChallenge(true));
 declineChallengeBtn.addEventListener("click", () => answerChallenge(false));
 

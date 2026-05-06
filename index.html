@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <title>Tiberius</title>
-  <link rel="stylesheet" href="style.css?v=core-save">
+  <link rel="stylesheet" href="style.css?v=human-play-simple">
 </head>
 <body>
   <main class="app-shell">
@@ -26,6 +26,7 @@
           <button id="newWhiteBtn" type="button">Start as White</button>
           <button id="newBlackBtn" type="button">Start as Black</button>
           <button id="concedeBtn" class="warn" type="button">Concede</button>
+          <button id="returnGameBtn" class="alt" type="button">Return to Game</button>
           <button id="newGameBtn" class="alt" type="button">Reset Board</button>
         </div>
       </div>
@@ -111,15 +112,12 @@
           <label class="field-label">Your name
             <input id="onlineNameInput" autocomplete="nickname" maxlength="32" placeholder="anonymous">
           </label>
-          <label class="field-label">Specific player
+          <label class="field-label">Human player
             <input id="challengeTargetInput" autocapitalize="none" autocomplete="off" maxlength="32" placeholder="handle or anon id">
           </label>
         </div>
-        <div class="online-actions">
-          <button id="challengeRandomBtn" type="button">Random Challenge</button>
-          <button id="challengeSpecificBtn" type="button">Challenge Player</button>
-          <button id="pokeRandomBtn" class="alt" type="button">Tap Random</button>
-          <button id="pokeSpecificBtn" class="alt" type="button">Tap Player</button>
+        <div class="online-actions single">
+          <button id="playHumanBtn" type="button">Play Human</button>
         </div>
         <div id="incomingChallenge" class="challenge-card hidden">
           <p id="incomingText" class="small">Incoming challenge.</p>
@@ -138,6 +136,6 @@
     </section>
   </main>
 
-  <script type="module" src="app.js?v=core-save"></script>
+  <script type="module" src="app.js?v=human-play-simple"></script>
 </body>
 </html>

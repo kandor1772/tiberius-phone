@@ -27,12 +27,10 @@ Players who are not currently playing should be treated as unavailable by the re
 
 ## Anonymous Players
 
-The client creates a stable anonymous id in local storage. A signed-out player can:
+The client creates a stable anonymous id in local storage. The optional display name is saved locally and published to the relay on heartbeat. A signed-out player can:
 
-- challenge a random active player
-- tap a random active player
-- challenge a specific handle or anonymous id
-- tap a specific handle or anonymous id
+- press `Play Human` with an empty target to challenge a random active player
+- enter a handle or anonymous id and press `Play Human` to challenge that specific player
 
 No account is required for the first version.
 
@@ -85,10 +83,6 @@ Payload:
   "game": { "active": true, "fen": "...", "pgn": "..." }
 }
 ```
-
-### `/poke`
-
-Same target shape as `/challenge`, but lower urgency. The receiver can accept and interrupt their game or ignore it.
 
 ### `/challenge/respond`
 
@@ -149,7 +143,7 @@ Use a relay that keeps hot state near the match:
 Minimum traffic protections:
 
 - Heartbeat no faster than every 25 seconds per client.
-- Poke/challenge rate limit per player and per target.
+- Challenge rate limit per player and per target.
 - Presence records expire automatically after 45-90 seconds.
 - Matchmaking queue is sharded by region or hash bucket.
 - Game move writes are idempotent by move number.
