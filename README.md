@@ -24,7 +24,7 @@ What runs on the phone:
 - Saved Games panel to resume recent games
 - DuckDNS-style Black start: Tiberius waits for the Stockfish anchor before making White's first move
 - Black-side board orientation uses the actual square lookup for each flipped coordinate, so the visible board and legal move targets match
-- Online play panel with one `Play Human` action: blank target means random, filled target means specific player
+- Online play panel with a selectable roster, seeded `RP` and `rick`, active/inactive player status, invite notifications, and one `Play Human` action
 
 Game Persistence:
 

@@ -29,8 +29,10 @@ Players who are not currently playing should be treated as unavailable by the re
 
 The client creates a stable anonymous id in local storage. The optional display name is saved locally and published to the relay on heartbeat. A signed-out player can:
 
-- press `Play Human` with an empty target to challenge a random active player
-- enter a handle or anonymous id and press `Play Human` to challenge that specific player
+- select a player from the roster and press `Play Human`
+- press `Play Human` with no selected roster row to challenge a random active player
+
+The static client seeds `RP` and `rick` as known inactive players before the relay responds.
 
 No account is required for the first version.
 
@@ -58,6 +60,14 @@ Response:
 ```json
 {
   "message": "optional status",
+  "players": [
+    {
+      "id": "rick",
+      "name": "rick",
+      "active": true,
+      "last_seen": "2026-05-06T19:25:00.000Z"
+    }
+  ],
   "incoming": [
     {
       "id": "challenge-id",
@@ -69,6 +79,8 @@ Response:
   "events": []
 }
 ```
+
+The client merges `players` into its local roster. Active players sort first; inactive known players remain visible and selectable.
 
 ### `/challenge`
 

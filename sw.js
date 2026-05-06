@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v15-human-play-simple";
+const CACHE = "tiberius-phone-v16-player-roster";
 const ASSETS = [
   "./",
   "index.html",

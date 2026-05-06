@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=human-play-simple";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-play-simple";
-import { MultiplayerClient } from "./multiplayer-client.js?v=human-play-simple";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=player-roster";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=player-roster";
+import { MultiplayerClient } from "./multiplayer-client.js?v=player-roster";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -38,7 +38,8 @@ const tradeoffText = document.getElementById("tradeoffText");
 const coachTextEl = document.getElementById("coachText");
 const syncTextEl = document.getElementById("syncText");
 const onlineNameInput = document.getElementById("onlineNameInput");
-const challengeTargetInput = document.getElementById("challengeTargetInput");
+const inviteNotifyBtn = document.getElementById("inviteNotifyBtn");
+const playerRosterEl = document.getElementById("playerRoster");
 const playHumanBtn = document.getElementById("playHumanBtn");
 const incomingChallengeEl = document.getElementById("incomingChallenge");
 const incomingTextEl = document.getElementById("incomingText");
@@ -69,6 +70,12 @@ let currentGameId = "";
 let onlineGame = null;
 let incomingChallenge = null;
 let onlineNotice = "";
+let selectedPlayerId = "";
+let lastNotifiedChallengeId = "";
+let knownPlayers = [
+  { id: "RP", name: "RP", active: false, seeded: true },
+  { id: "rick", name: "rick", active: false, seeded: true },
+];
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
 const PHONE_STATE_KEY = "tiberius-phone-state-v5-core";
@@ -114,6 +121,7 @@ function setThinking(thinking) {
   concedeBtn.disabled = !gameActive || thinking || Boolean(gameResult);
   playHumanBtn.disabled = thinking || isOnlineGame();
   returnGameBtn.disabled = !latestReturnableGame();
+  inviteNotifyBtn.disabled = !("Notification" in window) || Notification.permission === "granted";
   acceptChallengeBtn.disabled = !incomingChallenge || !gameActive || Boolean(gameResult);
   declineChallengeBtn.disabled = !incomingChallenge;
 }
@@ -193,11 +201,73 @@ function onlineSummary() {
   const relay = multiplayer.connected ? "Relay connected" : "Relay not connected";
   const available = gameActive && !gameResult ? "available while playing" : "unavailable until a board is active";
   const opponent = onlineGame ? ` Online game vs ${onlineGame.opponent || "player"}.` : "";
+  const selected = selectedPlayerId ? ` Selected ${playerLabel(selectedPlayerId)}.` : " No player selected: Play Human will look for random.";
   const notice = onlineNotice ? ` ${onlineNotice}` : "";
-  onlineStatusEl.textContent = `${relay}. ${multiplayer.label()} is ${available}.${opponent}${notice}`;
+  onlineStatusEl.textContent = `${relay}. ${multiplayer.label()} is ${available}.${opponent}${selected}${notice}`;
   incomingChallengeEl.classList.toggle("hidden", !incomingChallenge);
   if (incomingChallenge) {
     incomingTextEl.textContent = `${incomingChallenge.from_name || incomingChallenge.from || "A player"} wants to interrupt this game.`;
+  }
+  renderRoster();
+}
+
+function playerLabel(id) {
+  const player = knownPlayers.find(item => item.id === id || item.name === id);
+  return player?.name || id;
+}
+
+function normalizePlayer(player) {
+  const id = String(player.id || player.name || "").trim();
+  if (!id || id === multiplayer.player.id) return null;
+  return {
+    id,
+    name: String(player.name || id).trim(),
+    active: Boolean(player.active || player.available || player.status === "active"),
+    last_seen: player.last_seen || player.updated_at || "",
+    seeded: Boolean(player.seeded),
+  };
+}
+
+function mergePlayers(players = []) {
+  const map = new Map(knownPlayers.map(player => [player.id, player]));
+  for (const raw of players) {
+    const player = normalizePlayer(raw);
+    if (!player) continue;
+    map.set(player.id, { ...(map.get(player.id) || {}), ...player });
+  }
+  knownPlayers = [...map.values()].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
+  if (selectedPlayerId && !knownPlayers.some(player => player.id === selectedPlayerId)) selectedPlayerId = "";
+}
+
+function renderRoster() {
+  if (!playerRosterEl) return;
+  playerRosterEl.innerHTML = "";
+  for (const player of knownPlayers) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `player-row ${player.active ? "active" : "inactive"}`;
+    if (player.id === selectedPlayerId) button.classList.add("selected-player");
+    button.dataset.playerId = player.id;
+    button.innerHTML = `<span>${player.name}</span><strong>${player.active ? "active" : "inactive"}</strong>`;
+    button.addEventListener("click", () => {
+      selectedPlayerId = selectedPlayerId === player.id ? "" : player.id;
+      render();
+    });
+    playerRosterEl.appendChild(button);
+  }
+}
+
+function notifyIncomingChallenge(challenge) {
+  if (!challenge) return;
+  const id = challenge.id || challenge.challenge_id || `${challenge.from || ""}-${challenge.created_at || ""}`;
+  if (id && id === lastNotifiedChallengeId) return;
+  lastNotifiedChallengeId = id;
+  const from = challenge.from_name || challenge.from || "A player";
+  onlineNotice = `${from} challenged you. Accept or decline below.`;
+  if ("Notification" in window && Notification.permission === "granted") {
+    try {
+      new Notification("Tiberius challenge", { body: `${from} wants to play.` });
+    } catch (_err) {}
   }
 }
 
@@ -530,13 +600,18 @@ function handleOnlineResponse(data) {
     render();
     return;
   }
+  if (Array.isArray(data.players)) mergePlayers(data.players);
   if (Array.isArray(data.incoming) && data.incoming.length) {
     incomingChallenge = data.incoming[0];
+    notifyIncomingChallenge(incomingChallenge);
   }
   if (Array.isArray(data.events)) {
     for (const event of data.events) {
       if (event.type === "move") applyRemoteMove(event);
-      if (event.type === "challenge") incomingChallenge = event;
+      if (event.type === "challenge") {
+        incomingChallenge = event;
+        notifyIncomingChallenge(incomingChallenge);
+      }
     }
   }
   if (data.game) enterOnlineGame(data.game);
@@ -549,8 +624,7 @@ async function heartbeatOnline() {
   handleOnlineResponse(data);
 }
 
-async function sendChallenge(random) {
-  const target = random ? "" : challengeTargetInput.value.trim();
+async function sendChallenge(random, target = "") {
   onlineNotice = random ? "Looking for a random human player..." : `Looking for ${target || "player"}...`;
   render();
   const data = await multiplayer.challenge({ target, random, game: gameSnapshot() });
@@ -559,8 +633,8 @@ async function sendChallenge(random) {
 
 function playHuman() {
   saveState("human_matchmaking");
-  const target = challengeTargetInput.value.trim();
-  sendChallenge(!target);
+  const target = selectedPlayerId;
+  sendChallenge(!target, target);
 }
 
 async function answerChallenge(accept) {
@@ -897,8 +971,13 @@ onlineNameInput.addEventListener("change", () => {
   heartbeatOnline();
   render();
 });
-challengeTargetInput.addEventListener("input", () => render());
 playHumanBtn.addEventListener("click", playHuman);
+inviteNotifyBtn.addEventListener("click", async () => {
+  if (!("Notification" in window)) return;
+  const permission = await Notification.requestPermission();
+  onlineNotice = permission === "granted" ? "Invite notifications enabled." : "Invite notifications are blocked.";
+  render();
+});
 acceptChallengeBtn.addEventListener("click", () => answerChallenge(true));
 declineChallengeBtn.addEventListener("click", () => answerChallenge(false));
 

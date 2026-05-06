@@ -240,6 +240,49 @@ input {
   background: rgba(245, 255, 248, 0.72);
 }
 
+.player-roster {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.player-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(184, 148, 111, 0.72);
+  border-radius: 8px;
+  background: rgba(255, 253, 248, 0.72);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.player-row span {
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.player-row strong {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.player-row.inactive {
+  opacity: 0.68;
+}
+
+.player-row.active strong {
+  color: var(--good);
+}
+
+.player-row.selected-player {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(142, 47, 36, 0.24) inset;
+}
+
 .saved-games {
   display: grid;
   gap: 8px;

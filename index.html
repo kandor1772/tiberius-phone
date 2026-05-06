@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <title>Tiberius</title>
-  <link rel="stylesheet" href="style.css?v=human-play-simple">
+  <link rel="stylesheet" href="style.css?v=player-roster">
 </head>
 <body>
   <main class="app-shell">
@@ -112,10 +112,9 @@
           <label class="field-label">Your name
             <input id="onlineNameInput" autocomplete="nickname" maxlength="32" placeholder="anonymous">
           </label>
-          <label class="field-label">Human player
-            <input id="challengeTargetInput" autocapitalize="none" autocomplete="off" maxlength="32" placeholder="handle or anon id">
-          </label>
+          <button id="inviteNotifyBtn" class="alt" type="button">Enable Invites</button>
         </div>
+        <div id="playerRoster" class="player-roster" aria-label="Player roster"></div>
         <div class="online-actions single">
           <button id="playHumanBtn" type="button">Play Human</button>
         </div>
@@ -136,6 +135,6 @@
     </section>
   </main>
 
-  <script type="module" src="app.js?v=human-play-simple"></script>
+  <script type="module" src="app.js?v=player-roster"></script>
 </body>
 </html>
