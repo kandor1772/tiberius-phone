@@ -17,6 +17,7 @@ It contains:
 - a playable chess board with stable coordinates and responsive scaling
 - side selection: start as White or Black
 - board orientation for the chosen side
+- DuckDNS-style Black start: Tiberius waits for the Stockfish anchor before making White's first move
 - concede and reset board controls
 - move input by text or board taps
 - move list, FEN, result, turn, human side, and Tiberius side panels
@@ -71,6 +72,8 @@ Boot sequence:
 5. Load `tiberius-memory-full.json.gz` in the background.
 6. Replace the packaged lite memory with the full packaged memory once decompression/parsing finishes.
 7. Try optional live memory sources listed in `memory-sources.json`.
+
+When the human starts as Black, this matches the DuckDNS flow: the board is oriented for Black, Tiberius is White, and Tiberius does not make the first move until the Stockfish worker has booted or explicitly failed. If Stockfish fails, the app says so and falls back to packaged Tiberius memory instead of silently pretending the anchor was available.
 
 The status line reports the current truth, for example:
 

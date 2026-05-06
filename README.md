@@ -21,6 +21,7 @@ What runs on the phone:
 - Completed phone games learned into browser local storage
 - DuckDNS-linked sync outbox for future shared Tiberius memory ingestion
 - Start as White, start as Black, concede, reset board, move list, FEN, and analysis panels
+- DuckDNS-style Black start: Tiberius waits for the Stockfish anchor before making White's first move
 
 Bundled engine:
 

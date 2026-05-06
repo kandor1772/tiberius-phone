@@ -24,7 +24,7 @@ export class StockfishAdapter {
         if (this.ready) {
           clearInterval(timer);
           resolve(true);
-        } else if (Date.now() - started > 3000) {
+        } else if (Date.now() - started > 10000) {
           clearInterval(timer);
           resolve(false);
         }
@@ -38,7 +38,7 @@ export class StockfishAdapter {
   }
 
   _onLine(line) {
-    if (line === "readyok" || line.startsWith("uciok")) {
+    if (line === "readyok") {
       this.ready = true;
     }
     const current = this.pending[0];

@@ -1,6 +1,6 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=black-default";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=black-default";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=duckdns-engine-parity";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=duckdns-engine-parity";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -38,6 +38,7 @@ let overlay = new TiberiusOverlay();
 let stockfish = new StockfishAdapter();
 let selected = null;
 let stockfishReady = false;
+let stockfishBootPromise = null;
 let engineThinking = false;
 let sourceMemories = [];
 let phoneMemory = emptyMemory({ source: "phone-local" });
@@ -50,6 +51,7 @@ let gameActive = true;
 let gameResult = "";
 let statusMessage = "New game started. You are black.";
 let lastStrategy = "Balanced / not enough moves yet";
+let gameSerial = 0;
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
 const PHONE_STATE_KEY = "tiberius-phone-state-v2";
@@ -89,8 +91,33 @@ function memorySummaryText() {
 function refreshEngineStatus() {
   const engine = stockfishReady
     ? "Running on phone with Stockfish worker + Tiberius overlay."
-    : "Running on phone with Tiberius overlay. Stockfish WASM not bundled yet.";
+    : "Booting Stockfish worker before Tiberius moves.";
   engineStatusEl.textContent = `${engine} ${memorySummaryText()}`;
+}
+
+function startStockfishBoot() {
+  if (!stockfishBootPromise) {
+    stockfishBootPromise = stockfish.boot().then(ready => {
+      stockfishReady = ready;
+      refreshEngineStatus();
+      return ready;
+    }).catch(error => {
+      stockfishReady = false;
+      statusMessage = "Stockfish failed to boot; Tiberius is using overlay memory.";
+      refreshEngineStatus();
+      console.warn("Stockfish boot failed", error);
+      return false;
+    });
+  }
+  return stockfishBootPromise;
+}
+
+async function ensureStockfishReady() {
+  if (stockfishReady) return true;
+  statusMessage = "Tiberius is solving. Waiting for the Stockfish anchor...";
+  refreshEngineStatus();
+  render();
+  return startStockfishBoot();
 }
 
 function squareColor(square) {
@@ -390,11 +417,24 @@ async function engineMove() {
     render();
     return;
   }
+  const serial = gameSerial;
   setThinking(true);
+  render();
+  const ready = await ensureStockfishReady();
+  if (serial !== gameSerial || isHumanTurn() || !gameActive || gameResult) {
+    setThinking(false);
+    render();
+    return;
+  }
   let stockfishBest = null;
-  if (stockfishReady) {
+  if (ready) {
     const result = await stockfish.bestMove(chess.fen(), { depth: 10 });
     stockfishBest = result?.best || null;
+  }
+  if (serial !== gameSerial || isHumanTurn() || !gameActive || gameResult) {
+    setThinking(false);
+    render();
+    return;
   }
   const decision = overlay.chooseMove(chess, stockfishBest);
   if (!decision) {
@@ -407,14 +447,14 @@ async function engineMove() {
   rememberMove(before, played);
   statusMessage = stockfishBest
     ? `Stockfish anchor available. Tiberius chose ${played.san}.`
-    : `Tiberius chose ${played.san} from overlay heuristics while Stockfish boots.`;
+    : `Tiberius chose ${played.san} from overlay memory after Stockfish was unavailable.`;
   whyTitleEl.textContent = `Tiberius chose ${played.san}`;
   whyTextEl.textContent = `${predictionLine()} Separately, Stockfish/Tiberius is preserving a hidden search line from the current board.`;
   whenTextEl.textContent = "Tiberius takes control when the opponent plays into the hidden prediction or when their reply worsens the eval. If they break the prediction, the next search has to prove control again from the new board.";
   preserveText.textContent = `It preserved overlay score ${decision.score.toFixed(3)} from ${before.split(" ")[0].slice(0, 18)}...`;
   tradeoffText.textContent = stockfishBest
     ? `Pure Stockfish anchor suggested ${stockfishBest}; Tiberius blended it with memory and structure.`
-    : "This build is running the legal on-phone Tiberius overlay now. Drop in GPL Stockfish WASM to enable full Stockfish anchoring.";
+    : "Stockfish did not return an anchor, so this move came from packaged Tiberius memory and legal overlay search.";
   coachTextEl.textContent = "Puzzle for the opponent: Tiberius just named what it thinks you will do. If it is right, ask whether you are walking into habit. If it is wrong, make the move that changes the position class without hanging the eval.";
   lastStrategy = stockfishBest && uci(played) === stockfishBest ? "Stockfish anchored / memory blended" : "Memory overlay deviation";
   setThinking(false);
@@ -517,10 +557,7 @@ async function boot() {
   explainForHumanTurn();
   render();
 
-  stockfish.boot().then(ready => {
-    stockfishReady = ready;
-    refreshEngineStatus();
-  });
+  startStockfishBoot();
 
   fullMemoryLoading = true;
   refreshEngineStatus();
@@ -541,6 +578,7 @@ async function boot() {
 }
 
 function startNewGame(color) {
+  gameSerial += 1;
   chess.reset();
   humanColor = color === "b" ? "b" : "w";
   gameActive = true;
