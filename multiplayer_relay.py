@@ -34,19 +34,22 @@ class RelayState:
 
     def touch_player(self, player: dict) -> dict:
         now = time.time()
+        ids = self._ids_for(player)
+        existing = next((self.players[item] for item in ids if item in self.players), None)
         player_id = str(player.get("id") or player.get("name") or "").strip()
         if not player_id:
             player_id = f"anon-{uuid.uuid4().hex[:10]}"
         name = str(player.get("name") or player_id).strip()
-        record = {
+        record = existing or {}
+        record.update({
             "id": player_id,
             "name": name,
             "handle": str(player.get("handle") or name).strip(),
-            "aliases": sorted(self._ids_for(player)),
+            "aliases": sorted(ids | set(record.get("aliases") or [])),
             "active": True,
             "available": True,
             "last_seen": now,
-        }
+        })
         self.players[player_id] = record
         for alias in record["aliases"]:
             self.players[alias] = record
