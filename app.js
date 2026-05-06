@@ -75,19 +75,42 @@ function render() {
   setThinking(engineThinking);
 }
 
+function tryBoardMove(from, to) {
+  const promotion = to.endsWith("8") ? "q" : undefined;
+  try {
+    return chess.move({ from, to, promotion });
+  } catch (_err) {
+    return null;
+  }
+}
+
 function onSquare(square) {
   if (engineThinking || chess.turn() !== "w" || chess.isGameOver()) return;
+  const piece = chess.get(square);
+  const ownPiece = piece && piece.color === "w";
+
+  if (selected === square) {
+    selected = null;
+    render();
+    return;
+  }
+
+  if (selected && ownPiece) {
+    selected = square;
+    render();
+    return;
+  }
+
   if (selected) {
-    const promotion = square.endsWith("8") ? "q" : undefined;
-    const result = chess.move({ from: selected, to: square, promotion });
+    const result = tryBoardMove(selected, square);
     selected = null;
     if (result) {
       afterHumanMove(result);
       return;
     }
   }
-  const piece = chess.get(square);
-  selected = piece && piece.color === "w" ? square : null;
+
+  selected = ownPiece ? square : null;
   render();
 }
 
