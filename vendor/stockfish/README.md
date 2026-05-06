@@ -1,10 +1,16 @@
-# Stockfish WASM Slot
+# Stockfish WASM Bundle
 
-Put a GPL-compliant browser Stockfish build here:
+This directory bundles `stockfish@18.0.7` from npm under GPL-3.0.
 
-- `stockfish.js`
-- `stockfish.wasm` if required by that build
-- the GPL-3.0 license text
-- a source/build notice for the exact binary
+Runtime files:
 
-The phone app will detect `stockfish.js` automatically. Until it is present, Tiberius still runs the JavaScript overlay and memory predictor on the phone, but the Stockfish anchor is disabled.
+- `stockfish.js`: copied from `bin/stockfish-18-lite-single.js`
+- `stockfish.wasm`: copied from `bin/stockfish-18-lite-single.wasm`
+- `Copying.txt`: GPL-3.0 license text from the package
+- `UPSTREAM_README.md`: upstream package README
+
+Source package: https://www.npmjs.com/package/stockfish/v/18.0.7
+Upstream repository: https://github.com/nmrugg/stockfish.js
+Official Stockfish source: https://github.com/official-stockfish/Stockfish
+
+No engine code was modified. Files were renamed only to match the app loader.

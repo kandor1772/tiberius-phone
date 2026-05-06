@@ -8,13 +8,14 @@ What runs on the phone:
 - Legal chess rules through chess.js
 - Tiberius overlay logic ported to JavaScript
 - Compact Tiberius memory pack
-- Stockfish adapter hook for a GPL-compliant WASM worker
+- Bundled Stockfish 18 lite single-threaded WASM worker
+- Stockfish full-strength options: `UCI_LimitStrength=false`, `Skill Level=20`
 
-What still needs the final GPL artifact:
+Bundled engine:
 
 - `vendor/stockfish/stockfish.js`
-- `vendor/stockfish/stockfish.wasm` if the chosen build needs it
-- Stockfish source/build notice matching that binary
+- `vendor/stockfish/stockfish.wasm`
+- GPL/source notes in `LICENSES.md` and `vendor/stockfish/README.md`
 
 Local test:
 

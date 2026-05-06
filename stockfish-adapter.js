@@ -15,6 +15,8 @@ export class StockfishAdapter {
     }
     this.worker.onmessage = event => this._onLine(String(event.data || ""));
     this.send("uci");
+    this.send("setoption name UCI_LimitStrength value false");
+    this.send("setoption name Skill Level value 20");
     this.send("isready");
     const ok = await new Promise(resolve => {
       const started = Date.now();

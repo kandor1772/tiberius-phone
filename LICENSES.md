@@ -12,7 +12,18 @@ Stockfish is licensed under GPL-3.0. If a Stockfish JavaScript/WASM/native binar
 
 Official source: https://github.com/official-stockfish/Stockfish
 
-This repository currently includes only an adapter stub at `stockfish-adapter.js`. Put the actual GPL-compliant Stockfish build in `vendor/stockfish/` before publishing engine-enabled builds.
+This repository bundles `stockfish@18.0.7` from npm, licensed GPL-3.0. The phone build uses the lite single-threaded browser engine:
+
+- `vendor/stockfish/stockfish.js`, copied from `bin/stockfish-18-lite-single.js`
+- `vendor/stockfish/stockfish.wasm`, copied from `bin/stockfish-18-lite-single.wasm`
+- `vendor/stockfish/Copying.txt`, GPL-3.0 license text
+- `vendor/stockfish/UPSTREAM_README.md`, upstream package README
+
+Source package: https://www.npmjs.com/package/stockfish/v/18.0.7
+Upstream repository: https://github.com/nmrugg/stockfish.js
+Official Stockfish source: https://github.com/official-stockfish/Stockfish
+
+No local changes were made to the Stockfish engine files. They were renamed only so the PWA adapter can load `vendor/stockfish/stockfish.js` and its adjacent `stockfish.wasm`.
 
 ## chess.js
 
