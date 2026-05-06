@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v24-handle-alias";
+const CACHE = "tiberius-phone-v25-terminate-saves";
 const ASSETS = [
   "./",
   "index.html",

@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
-import { MultiplayerClient } from "./multiplayer-client.js?v=handle-alias";
+import { MultiplayerClient } from "./multiplayer-client.js?v=terminate-saves";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -430,6 +430,31 @@ function savedGameById(id) {
   return readSavedGames().find(game => game.id === id) || null;
 }
 
+function terminateSavedGame(id) {
+  if (!id) return;
+  const removedCurrent = id === currentGameId;
+  writeSavedGames(readSavedGames().filter(game => game.id !== id));
+  if (id === suspendedGameId) clearSuspendedGame();
+  if (removedCurrent) {
+    gameSerial += 1;
+    currentGameId = makeGameId();
+    chess.reset();
+    gameActive = true;
+    gameResult = "";
+    onlineGame = null;
+    selected = null;
+    trajectory = [];
+    statusMessage = "Saved game terminated. New board started.";
+    saveState("terminated_current", { sync: false });
+    queueSync("saved_game_terminated", { terminated_game_id: id, was_current: true });
+    explainForHumanTurn();
+  } else {
+    statusMessage = "Saved game terminated.";
+    queueSync("saved_game_terminated", { terminated_game_id: id, was_current: false });
+  }
+  render();
+}
+
 function rememberSuspendedGame() {
   if (isOnlineGame()) return false;
   ensureGameId();
@@ -560,13 +585,21 @@ function renderSavedGames() {
     row.className = "saved-game-row";
     const label = document.createElement("span");
     label.textContent = `${game.status || "active"} · ${game.moves?.length || 0} moves · ${new Date(game.saved_at || game.updated_at || Date.now()).toLocaleString()}`;
+    const actions = document.createElement("div");
+    actions.className = "saved-game-actions";
     const button = document.createElement("button");
     button.type = "button";
     button.className = "mini-action";
     button.textContent = game.id === currentGameId ? "Current" : "Resume";
     button.disabled = game.id === currentGameId;
     button.addEventListener("click", () => loadGameRecord(game));
-    row.append(label, button);
+    const terminateButton = document.createElement("button");
+    terminateButton.type = "button";
+    terminateButton.className = "mini-action warn";
+    terminateButton.textContent = "Terminate";
+    terminateButton.addEventListener("click", () => terminateSavedGame(game.id));
+    actions.append(button, terminateButton);
+    row.append(label, actions);
     savedGamesEl.appendChild(row);
   }
 }

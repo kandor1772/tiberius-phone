@@ -322,6 +322,12 @@ input {
   font-size: 0.84rem;
 }
 
+.saved-game-actions {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+}
+
 button.mini-action {
   padding: 8px 10px;
   font-size: 0.82rem;
