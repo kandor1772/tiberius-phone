@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v5-fast-boot";
+const CACHE = "tiberius-phone-v6-versioned-modules";
 const ASSETS = [
   "./",
   "index.html",
