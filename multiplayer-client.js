@@ -4,8 +4,8 @@ const NTFY_BASE = "https://ntfy.sh";
 const NTFY_PREFIX = "tiberius-phone-chess-v1";
 
 function canonicalHandle(name) {
-  const handle = String(name || "").trim().slice(0, 32);
-  return /^[A-Za-z0-9_-]{2,32}$/.test(handle) ? handle : "";
+  const handle = safeTopicPart(name).replace(/^-+|-+$/g, "").slice(0, 32);
+  return handle.length >= 2 ? handle : "";
 }
 
 function normalizePlayerIdentity(player) {
@@ -25,6 +25,10 @@ function normalizePlayerIdentity(player) {
 
 function safeTopicPart(value) {
   return String(value || "anon").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 48) || "anon";
+}
+
+function unique(items) {
+  return [...new Set(items.filter(Boolean))];
 }
 
 function readSeen() {
@@ -117,6 +121,15 @@ export class MultiplayerClient {
     return `${NTFY_PREFIX}-${safeTopicPart(id)}`;
   }
 
+  topicsForPlayer() {
+    return unique([
+      this.player.id,
+      this.player.handle,
+      this.player.name,
+      ...(this.player.aliases || []),
+    ]).map(id => this.topicFor(id));
+  }
+
   async publishNtfy(target, message) {
     const topic = this.topicFor(target);
     const response = await fetch(`${NTFY_BASE}/${topic}`, {
@@ -133,53 +146,54 @@ export class MultiplayerClient {
   }
 
   async pollNtfy() {
-    const topic = this.topicFor(this.player.id);
-    const response = await fetch(`${NTFY_BASE}/${topic}/json?poll=1&since=30m`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    const text = await response.text();
     const seen = readSeen();
-    const seenForTopic = new Set(seen[topic] || []);
     const incoming = [];
     const events = [];
-    for (const line of text.split(/\n+/)) {
-      if (!line.trim()) continue;
-      let envelope;
-      try {
-        envelope = JSON.parse(line);
-      } catch (_err) {
-        continue;
+    for (const topic of this.topicsForPlayer()) {
+      const response = await fetch(`${NTFY_BASE}/${topic}/json?poll=1&since=30m`, { cache: "no-store" });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      const text = await response.text();
+      const seenForTopic = new Set(seen[topic] || []);
+      for (const line of text.split(/\n+/)) {
+        if (!line.trim()) continue;
+        let envelope;
+        try {
+          envelope = JSON.parse(line);
+        } catch (_err) {
+          continue;
+        }
+        if (envelope.event !== "message" || seenForTopic.has(envelope.id)) continue;
+        seenForTopic.add(envelope.id);
+        let message;
+        try {
+          message = JSON.parse(envelope.message || "{}");
+        } catch (_err) {
+          continue;
+        }
+        if (message.kind === "challenge") {
+          const challenge = {
+            id: message.id,
+            challenge_id: message.id,
+            from: message.from,
+            from_name: message.from_name || message.from,
+            target: message.target,
+            target_name: message.target_name || message.target,
+            created_at: message.created_at,
+            transport: "ntfy",
+          };
+          this.incomingById.set(challenge.id, challenge);
+          incoming.push(challenge);
+        } else if (message.kind === "game_start" && message.game) {
+          this.gamesById.set(message.game.id, message.game);
+          events.push({ type: "game_start", game: message.game });
+        } else if (message.kind === "move") {
+          events.push({ type: "move", game_id: message.game_id, move: message.move, fen: message.fen, pgn: message.pgn });
+        } else if (message.kind === "forfeit") {
+          events.push({ type: "forfeit", game_id: message.game_id, from: message.from, reason: message.reason });
+        }
       }
-      if (envelope.event !== "message" || seenForTopic.has(envelope.id)) continue;
-      seenForTopic.add(envelope.id);
-      let message;
-      try {
-        message = JSON.parse(envelope.message || "{}");
-      } catch (_err) {
-        continue;
-      }
-      if (message.kind === "challenge") {
-        const challenge = {
-          id: message.id,
-          challenge_id: message.id,
-          from: message.from,
-          from_name: message.from_name || message.from,
-          target: message.target,
-          target_name: message.target_name || message.target,
-          created_at: message.created_at,
-          transport: "ntfy",
-        };
-        this.incomingById.set(challenge.id, challenge);
-        incoming.push(challenge);
-      } else if (message.kind === "game_start" && message.game) {
-        this.gamesById.set(message.game.id, message.game);
-        events.push({ type: "game_start", game: message.game });
-      } else if (message.kind === "move") {
-        events.push({ type: "move", game_id: message.game_id, move: message.move, fen: message.fen, pgn: message.pgn });
-      } else if (message.kind === "forfeit") {
-        events.push({ type: "forfeit", game_id: message.game_id, from: message.from, reason: message.reason });
-      }
+      seen[topic] = [...seenForTopic].slice(-200);
     }
-    seen[topic] = [...seenForTopic].slice(-200);
     writeSeen(seen);
     this.connected = true;
     this.transport = "public ntfy relay";

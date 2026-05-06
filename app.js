@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
-import { MultiplayerClient } from "./multiplayer-client.js?v=ntfy-only";
+import { MultiplayerClient } from "./multiplayer-client.js?v=handle-alias";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -204,13 +204,14 @@ function onlineSummary() {
   const available = isOnlineGame()
     ? "busy in a human game; incoming invites can interrupt, outgoing invites are disabled"
     : gameActive && !gameResult ? "available for human invites" : "unavailable until a board is active";
+  const handle = multiplayer.player.handle ? ` Handle: ${multiplayer.player.handle}.` : "";
   const opponent = onlineGame ? ` Online game vs ${onlineGame.opponent || "player"}.` : "";
   const selectedPlayer = selectedPlayerId ? knownPlayers.find(player => player.id === selectedPlayerId) : null;
   const selected = selectedPlayer
     ? ` Selected ${selectedPlayer.name} (${selectedPlayer.active ? "active" : "inactive"}).`
     : " No player selected: Play Human will look for random active players.";
   const notice = onlineNotice ? ` ${onlineNotice}` : "";
-  onlineStatusEl.textContent = `${relay}. ${multiplayer.label()} is ${available}.${opponent}${selected}${notice}`;
+  onlineStatusEl.textContent = `${relay}. ${multiplayer.label()} is ${available}.${handle}${opponent}${selected}${notice}`;
   incomingChallengeEl.classList.toggle("hidden", !incomingChallenge);
   if (incomingChallenge) {
     const from = incomingChallenge.from_name || incomingChallenge.from || "A player";
