@@ -150,10 +150,10 @@ input {
   z-index: 2;
   display: block;
   font-family: "Arial Unicode MS", "DejaVu Sans", "Noto Sans Symbols 2", "Apple Symbols", sans-serif;
-  font-size: clamp(2.2rem, 9.4vw, 4.9rem);
+  font-size: clamp(2.15rem, 8.6vw, 4.35rem);
   font-weight: 900;
-  line-height: 1;
-  transform: translateY(-0.02em);
+  line-height: 0.9;
+  transform: translateY(-0.06em);
   -webkit-text-stroke-width: clamp(1px, 0.18vw, 2px);
   filter: drop-shadow(0 2px 1px rgba(45, 27, 18, 0.2));
 }
