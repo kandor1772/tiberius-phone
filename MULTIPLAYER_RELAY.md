@@ -32,7 +32,7 @@ The client creates a stable anonymous id in local storage. The optional display 
 - select a player from the roster and press `Play Human`
 - press `Play Human` with no selected roster row to challenge a random active player
 
-The static client seeds `RP` and `rick` as known inactive players before the relay responds.
+The static client seeds `RP` and `rick` as known active players before the relay responds. Inactive players remain visible, but the client disables direct invites to inactive rows.
 
 No account is required for the first version.
 
@@ -80,7 +80,7 @@ Response:
 }
 ```
 
-The client merges `players` into its local roster. Active players sort first; inactive known players remain visible and selectable.
+The client merges `players` into its local roster. Active players sort first; inactive known players remain visible but cannot be selected for a direct invite.
 
 ### `/challenge`
 

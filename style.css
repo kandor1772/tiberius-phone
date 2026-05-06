@@ -272,6 +272,7 @@ input {
 
 .player-row.inactive {
   opacity: 0.68;
+  cursor: not-allowed;
 }
 
 .player-row.active strong {
