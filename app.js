@@ -1100,7 +1100,7 @@ async function boot() {
 
   flushSync();
   heartbeatOnline();
-  setInterval(heartbeatOnline, 10000);
+  setInterval(heartbeatOnline, 3000);
   if (gameActive && !gameResult && !isHumanTurn()) {
     engineMove();
   }

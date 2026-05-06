@@ -30,7 +30,9 @@ class RelayState:
         }
         for alias in player.get("aliases") or []:
             ids.add(str(alias).strip())
-        return {item for item in ids if item}
+        expanded = {item for item in ids if item}
+        expanded.update(item.lower() for item in expanded)
+        return expanded
 
     def touch_player(self, player: dict) -> dict:
         now = time.time()
@@ -86,6 +88,7 @@ class RelayState:
                 challenge["status"] = "expired"
                 continue
             targets = {str(challenge.get("target") or ""), str(challenge.get("targetName") or ""), str(challenge.get("targetHandle") or "")}
+            targets.update(item.lower() for item in list(targets))
             if ids & {item for item in targets if item}:
                 incoming.append(self.public_challenge(challenge))
         return incoming
