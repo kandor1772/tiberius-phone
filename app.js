@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
-import { MultiplayerClient } from "./multiplayer-client.js?v=profile-isolation";
+import { MultiplayerClient } from "./multiplayer-client.js?v=profile-isolation-2";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -286,6 +286,7 @@ function renderRoster() {
       player.id !== self.id
       && player.id !== "RP"
       && player.name !== "RP"
+      && !player.self
     )),
   ];
   for (const player of roster) {
