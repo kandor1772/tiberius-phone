@@ -1,6 +1,6 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=duckdns-controls";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=duckdns-controls";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=black-default";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=black-default";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -45,14 +45,14 @@ let loadedMemorySources = [];
 let failedMemorySources = [];
 let trajectory = [];
 let fullMemoryLoading = false;
-let humanColor = "w";
+let humanColor = "b";
 let gameActive = true;
 let gameResult = "";
-let statusMessage = "New game started. You are white.";
+let statusMessage = "New game started. You are black.";
 let lastStrategy = "Balanced / not enough moves yet";
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
-const PHONE_STATE_KEY = "tiberius-phone-state-v1";
+const PHONE_STATE_KEY = "tiberius-phone-state-v2";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
 const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 
@@ -215,7 +215,7 @@ function saveState() {
 function loadSavedState() {
   try {
     const saved = JSON.parse(localStorage.getItem(PHONE_STATE_KEY));
-    if (!saved) return;
+    if (!saved) return false;
     humanColor = saved.humanColor === "b" ? "b" : "w";
     gameActive = Boolean(saved.gameActive);
     gameResult = saved.gameResult || "";
@@ -223,7 +223,9 @@ function loadSavedState() {
     lastStrategy = saved.lastStrategy || lastStrategy;
     trajectory = Array.isArray(saved.trajectory) ? saved.trajectory : [];
     if (saved.fen) chess.load(saved.fen);
+    return true;
   } catch (_err) {}
+  return false;
 }
 
 function readOutbox() {
@@ -343,6 +345,17 @@ function predictionLine() {
 }
 
 function explainForHumanTurn() {
+  if (!gameActive || gameResult) {
+    puzzleTitleEl.textContent = "Current puzzle";
+    puzzleTextEl.textContent = "Start a new game and Tiberius will turn each position into a solvable plan.";
+    whyTitleEl.textContent = "Why this works best";
+    whyTextEl.textContent = "Tiberius will explain her move after she plays it.";
+    whenTextEl.textContent = "Waiting for a move...";
+    preserveText.textContent = "Waiting for a move...";
+    tradeoffText.textContent = "Waiting for a move...";
+    coachTextEl.textContent = "Try to find the move that improves your pieces without loosening your structure.";
+    return;
+  }
   const side = colorName(chess.turn());
   puzzleTitleEl.textContent = isHumanTurn() ? "Your move" : "Tiberius is solving";
   puzzleTextEl.textContent = isHumanTurn()
@@ -490,7 +503,14 @@ async function loadMemoryPhase(manifest, phase) {
 async function boot() {
   render();
   loadPhoneMemory();
-  loadSavedState();
+  const restored = loadSavedState();
+  if (!restored) {
+    humanColor = "b";
+    gameActive = true;
+    gameResult = "";
+    statusMessage = "New game started. You are black.";
+    saveState();
+  }
   const manifest = await loadManifest();
   await loadMemoryPhase(manifest, "initial");
   refreshEngineStatus();
