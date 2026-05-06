@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#151a24">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Tiberius">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <title>Tiberius</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="board-panel">
+      <header class="topbar">
+        <div>
+          <h1>Tiberius</h1>
+          <p id="engineStatus">Booting phone engine...</p>
+        </div>
+        <button id="newGameBtn" type="button">New</button>
+      </header>
+
+      <div id="board" class="board" aria-label="Chess board"></div>
+
+      <div class="controls">
+        <input id="moveInput" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="e2e4 or Nf3">
+        <button id="playBtn" type="button">Play</button>
+      </div>
+    </section>
+
+    <section class="analysis-panel">
+      <div class="status-card">
+        <div class="label">Position</div>
+        <div id="turnText">White to move</div>
+        <div id="evalText" class="eval">No eval yet</div>
+      </div>
+
+      <article>
+        <h2 id="predictionTitle">Prediction</h2>
+        <p id="predictionText">Tiberius will call out what it thinks you will do from memory, not what Stockfish says is best.</p>
+      </article>
+
+      <article>
+        <h2>What It Is Preserving</h2>
+        <p id="preserveText">Waiting for the first search.</p>
+      </article>
+
+      <article>
+        <h2>Tradeoff</h2>
+        <p id="tradeoffText">Waiting for the first search.</p>
+      </article>
+
+      <article>
+        <h2>Solve Like A Puzzle</h2>
+        <p id="puzzleText">Break the prediction without copying the engine.</p>
+      </article>
+
+      <details>
+        <summary>Licenses</summary>
+        <p>Stockfish is GPL-3.0. This build includes an adapter slot; publish the matching source/build notice when bundling a Stockfish WASM binary.</p>
+      </details>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
