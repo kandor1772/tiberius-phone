@@ -31,6 +31,7 @@ let phoneMemory = emptyMemory({ source: "phone-local" });
 let loadedMemorySources = [];
 let failedMemorySources = [];
 let trajectory = [];
+let fullMemoryLoading = false;
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
 
@@ -47,7 +48,8 @@ function setThinking(thinking) {
 function memorySummaryText() {
   const summary = overlay.sourceSummary();
   const failed = failedMemorySources.length ? ` ${failedMemorySources.length} source${failedMemorySources.length === 1 ? "" : "s"} unreachable.` : "";
-  return `Memory: ${summary.sources} source${summary.sources === 1 ? "" : "s"}, ${summary.globalMoves} learned patterns, ${summary.positions} exact positions, ${summary.learned} local moves.${failed}`;
+  const loading = fullMemoryLoading ? " Loading full memory..." : "";
+  return `Memory: ${summary.sources} source${summary.sources === 1 ? "" : "s"}, ${summary.globalMoves} learned patterns, ${summary.positions} exact positions, ${summary.learned} local moves.${loading}${failed}`;
 }
 
 function refreshEngineStatus() {
@@ -122,6 +124,12 @@ function bucketForPosition(fen, finalWhiteScore) {
 
 function rebuildOverlay() {
   overlay = new TiberiusOverlay(mergeMemorySources([...sourceMemories, phoneMemory]));
+}
+
+function addMemorySource(memory) {
+  const group = memory?.meta?.group || memory?.meta?.url || `memory-${sourceMemories.length}`;
+  sourceMemories = sourceMemories.filter(item => (item?.meta?.group || item?.meta?.url) !== group);
+  sourceMemories.push(memory);
 }
 
 function savePhoneMemory() {
@@ -273,34 +281,19 @@ async function fetchMemorySource(source) {
   memory.meta ||= {};
   memory.meta.source_label = source.label || url;
   memory.meta.url = url;
+  memory.meta.group = source.group || url;
   return memory;
 }
 
-async function loadMemory() {
+async function loadManifest() {
   let manifest = { sources: [{ label: "Bundled Tiberius memory pack", url: "tiberius-memory-lite.json", required: true }] };
   try {
     manifest = await fetch("memory-sources.json", { cache: "no-store" }).then(r => r.json());
   } catch (_err) {}
+  return manifest;
+}
 
-  sourceMemories = [];
-  loadedMemorySources = [];
-  failedMemorySources = [];
-  const loadedGroups = new Set();
-  for (const source of manifest.sources || []) {
-    if (source.group && loadedGroups.has(source.group)) continue;
-    try {
-      const memory = await fetchMemorySource(source);
-      sourceMemories.push(memory);
-      loadedMemorySources.push(source.label || source.url);
-      if (source.group) loadedGroups.add(source.group);
-    } catch (_err) {
-      failedMemorySources.push(source.label || source.url);
-      if (source.required) {
-        sourceMemories.push(emptyMemory({ source_label: `${source.label || source.url} unavailable` }));
-      }
-    }
-  }
-
+function loadPhoneMemory() {
   try {
     phoneMemory = JSON.parse(localStorage.getItem(PHONE_MEMORY_KEY)) || phoneMemory;
   } catch (_err) {
@@ -308,15 +301,50 @@ async function loadMemory() {
   }
   phoneMemory.meta ||= {};
   phoneMemory.meta.source_label = "Phone local learning";
+}
+
+async function loadMemoryPhase(manifest, phase) {
+  const sources = (manifest.sources || []).filter(source => (source.phase || "initial") === phase);
+  for (const source of sources) {
+    try {
+      const memory = await fetchMemorySource(source);
+      addMemorySource(memory);
+      loadedMemorySources.push(source.label || source.url);
+    } catch (_err) {
+      failedMemorySources.push(source.label || source.url);
+      if (source.required) {
+        addMemorySource(emptyMemory({ source_label: `${source.label || source.url} unavailable`, group: source.group || source.url }));
+      }
+    }
+  }
   rebuildOverlay();
 }
 
 async function boot() {
-  await loadMemory();
-  stockfishReady = await stockfish.boot();
+  render();
+  loadPhoneMemory();
+  const manifest = await loadManifest();
+  await loadMemoryPhase(manifest, "initial");
   refreshEngineStatus();
   explainForHumanTurn();
   render();
+
+  stockfish.boot().then(ready => {
+    stockfishReady = ready;
+    refreshEngineStatus();
+  });
+
+  fullMemoryLoading = true;
+  refreshEngineStatus();
+  loadMemoryPhase(manifest, "deferred").then(() => {
+    fullMemoryLoading = false;
+    refreshEngineStatus();
+    explainForHumanTurn();
+    render();
+  }).catch(() => {
+    fullMemoryLoading = false;
+    refreshEngineStatus();
+  });
 }
 
 newGameBtn.addEventListener("click", () => {

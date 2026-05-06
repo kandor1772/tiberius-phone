@@ -1,21 +1,24 @@
 {
   "sources": [
     {
+      "label": "Bundled Tiberius memory fallback",
+      "url": "tiberius-memory-lite.json",
+      "group": "packaged",
+      "phase": "initial",
+      "required": true
+    },
+    {
       "label": "Full packaged Tiberius memory",
       "url": "tiberius-memory-full.json.gz",
       "compression": "gzip",
       "group": "packaged",
+      "phase": "deferred",
       "required": false
-    },
-    {
-      "label": "Bundled Tiberius memory fallback",
-      "url": "tiberius-memory-lite.json",
-      "group": "packaged",
-      "required": true
     },
     {
       "label": "Live Tiberius memory snapshot",
       "url": "https://eltiburon.duckdns.org/tiberius-memory-lite.json",
+      "phase": "deferred",
       "required": false
     }
   ]
