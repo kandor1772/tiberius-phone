@@ -1,6 +1,6 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=black-board-parity";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=black-board-parity";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=black-state-parity";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=black-state-parity";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -54,7 +54,7 @@ let lastStrategy = "Balanced / not enough moves yet";
 let gameSerial = 0;
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
-const PHONE_STATE_KEY = "tiberius-phone-state-v3-black";
+const PHONE_STATE_KEY = "tiberius-phone-state-v4-black";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
 const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 
@@ -253,7 +253,13 @@ function loadSavedState() {
     statusMessage = saved.statusMessage || `Restored game. You are ${colorName(humanColor)}.`;
     lastStrategy = saved.lastStrategy || lastStrategy;
     trajectory = Array.isArray(saved.trajectory) ? saved.trajectory : [];
-    if (saved.fen) chess.load(saved.fen);
+    if (Array.isArray(saved.history) && saved.history.length) {
+      chess.reset();
+      for (const move of saved.history) chess.move(move, { sloppy: true });
+      if (saved.fen && chess.fen() !== saved.fen) chess.load(saved.fen);
+    } else if (saved.fen) {
+      chess.load(saved.fen);
+    }
     return true;
   } catch (_err) {}
   return false;

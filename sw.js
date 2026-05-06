@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v10-black-board-parity";
+const CACHE = "tiberius-phone-v11-black-state-parity";
 const ASSETS = [
   "./",
   "index.html",
