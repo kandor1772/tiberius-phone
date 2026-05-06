@@ -73,6 +73,17 @@ input {
   font: inherit;
 }
 
+.field-label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 0.72rem;
+  font-weight: 900;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 button {
   border: 0;
   border-radius: 8px;
@@ -205,6 +216,30 @@ input {
   gap: 10px;
 }
 
+.online-grid,
+.online-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.online-actions.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.challenge-card {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(31, 122, 84, 0.42);
+  border-radius: 8px;
+  background: rgba(245, 255, 248, 0.72);
+}
+
+.hidden {
+  display: none;
+}
+
 button.warn {
   background: linear-gradient(180deg, #9d3a2f, #6f2119);
 }
@@ -315,6 +350,11 @@ summary {
   }
 
   .actions {
+    grid-template-columns: 1fr;
+  }
+
+  .online-grid,
+  .online-actions {
     grid-template-columns: 1fr;
   }
 }

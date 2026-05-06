@@ -23,6 +23,13 @@ What runs on the phone:
 - Start as White, start as Black, concede, reset board, move list, FEN, and analysis panels
 - DuckDNS-style Black start: Tiberius waits for the Stockfish anchor before making White's first move
 - Black-side board orientation uses the actual square lookup for each flipped coordinate, so the visible board and legal move targets match
+- Online challenge panel for random/specific players, poke/tap requests, anonymous identity, and interrupt-to-accept flow
+
+Multiplayer:
+
+- The static app includes the client-side online play surface and relay calls.
+- Live matchmaking requires a relay at `https://eltiburon.duckdns.org/api/multiplayer`.
+- [MULTIPLAYER_RELAY.md](MULTIPLAYER_RELAY.md) documents the endpoint contract and large-traffic guardrails.
 
 Bundled engine:
 

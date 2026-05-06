@@ -1,9 +1,10 @@
-const CACHE = "tiberius-phone-v12-piece-room";
+const CACHE = "tiberius-phone-v13-multiplayer-ready";
 const ASSETS = [
   "./",
   "index.html",
   "style.css",
   "app.js",
+  "multiplayer-client.js",
   "tiberius-overlay.js",
   "stockfish-adapter.js",
   "memory-sources.json",
@@ -16,7 +17,8 @@ const ASSETS = [
   "tiberius-memory-lite.json",
   "manifest.webmanifest",
   "icon.svg",
-  "LICENSES.md"
+  "LICENSES.md",
+  "MULTIPLAYER_RELAY.md"
 ];
 
 self.addEventListener("install", event => {

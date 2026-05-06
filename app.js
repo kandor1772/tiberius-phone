@@ -1,6 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=black-state-parity";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=black-state-parity";
+import { MultiplayerClient } from "./multiplayer-client.js?v=multiplayer-ready";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -18,6 +19,7 @@ const moveInput = document.getElementById("moveInput");
 const playBtn = document.getElementById("playBtn");
 const humanSideEl = document.getElementById("humanSide");
 const tiberiusSideEl = document.getElementById("tiberiusSide");
+const opponentLabelEl = document.getElementById("opponentLabel");
 const turnText = document.getElementById("turnText");
 const resultTextEl = document.getElementById("resultText");
 const movesEl = document.getElementById("moves");
@@ -32,6 +34,17 @@ const preserveText = document.getElementById("preserveText");
 const tradeoffText = document.getElementById("tradeoffText");
 const coachTextEl = document.getElementById("coachText");
 const syncTextEl = document.getElementById("syncText");
+const onlineNameInput = document.getElementById("onlineNameInput");
+const challengeTargetInput = document.getElementById("challengeTargetInput");
+const challengeRandomBtn = document.getElementById("challengeRandomBtn");
+const challengeSpecificBtn = document.getElementById("challengeSpecificBtn");
+const pokeRandomBtn = document.getElementById("pokeRandomBtn");
+const pokeSpecificBtn = document.getElementById("pokeSpecificBtn");
+const incomingChallengeEl = document.getElementById("incomingChallenge");
+const incomingTextEl = document.getElementById("incomingText");
+const acceptChallengeBtn = document.getElementById("acceptChallengeBtn");
+const declineChallengeBtn = document.getElementById("declineChallengeBtn");
+const onlineStatusEl = document.getElementById("onlineStatus");
 
 const chess = new Chess();
 let overlay = new TiberiusOverlay();
@@ -52,11 +65,16 @@ let gameResult = "";
 let statusMessage = "New game started. You are black.";
 let lastStrategy = "Balanced / not enough moves yet";
 let gameSerial = 0;
+let onlineGame = null;
+let incomingChallenge = null;
+let onlineNotice = "";
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
 const PHONE_STATE_KEY = "tiberius-phone-state-v4-black";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
 const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
+const MULTIPLAYER_ENDPOINTS = ["https://eltiburon.duckdns.org/api/multiplayer"];
+const multiplayer = new MultiplayerClient({ endpoints: MULTIPLAYER_ENDPOINTS });
 
 function uci(move) {
   return `${move.from}${move.to}${move.promotion || ""}`;
@@ -74,11 +92,22 @@ function isHumanTurn() {
   return gameActive && !gameResult && chess.turn() === humanColor;
 }
 
+function isOnlineGame() {
+  return Boolean(onlineGame?.id);
+}
+
 function setThinking(thinking) {
   engineThinking = thinking;
   playBtn.disabled = thinking || !isHumanTurn();
   moveInput.disabled = playBtn.disabled;
   concedeBtn.disabled = !gameActive || thinking || Boolean(gameResult);
+  const canChallenge = gameActive && !gameResult;
+  challengeRandomBtn.disabled = !canChallenge;
+  pokeRandomBtn.disabled = !canChallenge;
+  challengeSpecificBtn.disabled = !canChallenge || !challengeTargetInput.value.trim();
+  pokeSpecificBtn.disabled = !canChallenge || !challengeTargetInput.value.trim();
+  acceptChallengeBtn.disabled = !incomingChallenge || !gameActive || Boolean(gameResult);
+  declineChallengeBtn.disabled = !incomingChallenge;
 }
 
 function memorySummaryText() {
@@ -133,6 +162,30 @@ function syncSummary() {
     : "Linked to DuckDNS. Phone outbox is clear.";
 }
 
+function gameSnapshot() {
+  return {
+    active: gameActive && !gameResult,
+    game_id: onlineGame?.id || null,
+    fen: chess.fen(),
+    pgn: chess.pgn(),
+    human_color: colorName(humanColor),
+    turn: colorName(chess.turn()),
+    moves: chess.history(),
+  };
+}
+
+function onlineSummary() {
+  const relay = multiplayer.connected ? "Relay connected" : "Relay not connected";
+  const available = gameActive && !gameResult ? "available while playing" : "unavailable until a board is active";
+  const opponent = onlineGame ? ` Online game vs ${onlineGame.opponent || "player"}.` : "";
+  const notice = onlineNotice ? ` ${onlineNotice}` : "";
+  onlineStatusEl.textContent = `${relay}. ${multiplayer.label()} is ${available}.${opponent}${notice}`;
+  incomingChallengeEl.classList.toggle("hidden", !incomingChallenge);
+  if (incomingChallenge) {
+    incomingTextEl.textContent = `${incomingChallenge.from_name || incomingChallenge.from || "A player"} wants to interrupt this game.`;
+  }
+}
+
 function render() {
   boardEl.innerHTML = "";
   const baseFiles = ["a","b","c","d","e","f","g","h"];
@@ -167,7 +220,8 @@ function render() {
     }
   }
   humanSideEl.textContent = colorName(humanColor);
-  tiberiusSideEl.textContent = colorName(tiberiusColor());
+  opponentLabelEl.textContent = isOnlineGame() ? "Opponent" : "Tiberius";
+  tiberiusSideEl.textContent = isOnlineGame() ? `${onlineGame.opponent} (${colorName(tiberiusColor())})` : colorName(tiberiusColor());
   newWhiteBtn.classList.toggle("active-side", humanColor === "w");
   newBlackBtn.classList.toggle("active-side", humanColor === "b");
   newWhiteBtn.setAttribute("aria-pressed", String(humanColor === "w"));
@@ -184,6 +238,7 @@ function render() {
     gameActive = false;
   }
   syncSummary();
+  onlineSummary();
   setThinking(engineThinking);
 }
 
@@ -319,6 +374,96 @@ async function flushSync() {
   syncSummary();
 }
 
+function enterOnlineGame(game) {
+  if (!game?.id) return;
+  gameSerial += 1;
+  onlineGame = {
+    id: game.id,
+    opponent: game.opponent_name || game.opponent || "player",
+    color: game.color === "b" ? "b" : "w",
+  };
+  humanColor = onlineGame.color;
+  if (game.fen) {
+    chess.load(game.fen);
+  } else {
+    chess.reset();
+  }
+  gameActive = true;
+  gameResult = "";
+  selected = null;
+  engineThinking = false;
+  statusMessage = `Online game started against ${onlineGame.opponent}.`;
+  onlineNotice = "Tiberius paused; waiting on human moves.";
+  saveState();
+  render();
+}
+
+function applyRemoteMove(event) {
+  if (!onlineGame || event.game_id !== onlineGame.id || !event.move) return;
+  const beforeFen = chess.fen();
+  const move = typeof event.move === "string" ? event.move : event.move.san || event.move.uci;
+  if (!move) return;
+  const played = /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move)
+    ? chess.move({ from: move.slice(0, 2), to: move.slice(2, 4), promotion: move[4] })
+    : chess.move(move, { sloppy: true });
+  if (!played) return;
+  rememberMove(beforeFen, played);
+  statusMessage = `${onlineGame.opponent} played ${played.san}.`;
+  finishIfGameOver();
+  saveState();
+  render();
+}
+
+function handleOnlineResponse(data) {
+  if (!data) {
+    onlineNotice = "Relay unavailable; online play needs the multiplayer endpoint to answer.";
+    render();
+    return;
+  }
+  if (Array.isArray(data.incoming) && data.incoming.length) {
+    incomingChallenge = data.incoming[0];
+  }
+  if (Array.isArray(data.events)) {
+    for (const event of data.events) {
+      if (event.type === "move") applyRemoteMove(event);
+      if (event.type === "challenge" || event.type === "poke") incomingChallenge = event;
+    }
+  }
+  if (data.game) enterOnlineGame(data.game);
+  onlineNotice = data.message || onlineNotice;
+  render();
+}
+
+async function heartbeatOnline() {
+  const data = await multiplayer.heartbeat(gameSnapshot());
+  handleOnlineResponse(data);
+}
+
+async function sendChallenge(random) {
+  const target = random ? "" : challengeTargetInput.value.trim();
+  onlineNotice = random ? "Looking for a random active player..." : `Challenging ${target || "player"}...`;
+  render();
+  const data = await multiplayer.challenge({ target, random, game: gameSnapshot() });
+  handleOnlineResponse(data);
+}
+
+async function sendPoke(random) {
+  const target = random ? "" : challengeTargetInput.value.trim();
+  onlineNotice = random ? "Tapping a random active player..." : `Tapping ${target || "player"}...`;
+  render();
+  const data = await multiplayer.poke({ target, random, game: gameSnapshot() });
+  handleOnlineResponse(data);
+}
+
+async function answerChallenge(accept) {
+  if (!incomingChallenge) return;
+  const challengeId = incomingChallenge.id || incomingChallenge.challenge_id;
+  onlineNotice = accept ? "Accepting challenge..." : "Declining challenge.";
+  const data = await multiplayer.respond({ challengeId, accept });
+  if (!accept) incomingChallenge = null;
+  handleOnlineResponse(data);
+}
+
 function finishIfGameOver() {
   if (!chess.isGameOver() || gameResult) return;
   gameResult = chess.isCheckmate() ? (chess.turn() === "w" ? "0-1" : "1-0") : "1/2-1/2";
@@ -409,11 +554,20 @@ function explainForHumanTurn() {
 async function afterHumanMove(move) {
   render();
   whyTitleEl.textContent = `After your ${move.san}`;
-  whyTextEl.textContent = "Tiberius has calculated a reply and is predicting the kind of move you are likely to allow next.";
+  whyTextEl.textContent = isOnlineGame()
+    ? "Move sent to the online relay. Tiberius is paused while the other player answers."
+    : "Tiberius has calculated a reply and is predicting the kind of move you are likely to allow next.";
   whenTextEl.textContent = "Tiberius takes control if your move lets the hidden line stay stable or improves its eval on the next refresh.";
   if (chess.isGameOver()) {
     finishIfGameOver();
     completeGameLearning();
+    saveState();
+    render();
+    return;
+  }
+  if (isOnlineGame()) {
+    onlineNotice = `Sent ${move.san}; waiting for ${onlineGame.opponent}.`;
+    await multiplayer.move({ gameId: onlineGame.id, move: { san: move.san, uci: uci(move) }, fen: chess.fen(), pgn: chess.pgn() });
     saveState();
     render();
     return;
@@ -551,6 +705,7 @@ async function loadMemoryPhase(manifest, phase) {
 }
 
 async function boot() {
+  onlineNameInput.value = multiplayer.player.name || "";
   render();
   loadPhoneMemory();
   const restored = loadSavedState();
@@ -582,6 +737,8 @@ async function boot() {
   });
 
   flushSync();
+  heartbeatOnline();
+  setInterval(heartbeatOnline, 25000);
   if (gameActive && !gameResult && !isHumanTurn()) {
     engineMove();
   }
@@ -593,6 +750,7 @@ function startNewGame(color) {
   humanColor = color === "b" ? "b" : "w";
   gameActive = true;
   gameResult = "";
+  onlineGame = null;
   statusMessage = `New game started. You are ${colorName(humanColor)}.`;
   lastStrategy = "Balanced / not enough moves yet";
   selected = null;
@@ -609,6 +767,7 @@ function concedeGame() {
   if (!gameActive || gameResult || engineThinking) return;
   gameResult = humanColor === "w" ? "0-1" : "1-0";
   gameActive = false;
+  onlineGame = null;
   statusMessage = "You conceded.";
   completeGameLearning(true);
   saveState();
@@ -620,6 +779,18 @@ newWhiteBtn.addEventListener("click", () => startNewGame("w"));
 newBlackBtn.addEventListener("click", () => startNewGame("b"));
 concedeBtn.addEventListener("click", concedeGame);
 newGameBtn.addEventListener("click", () => startNewGame(humanColor));
+onlineNameInput.addEventListener("change", () => {
+  multiplayer.setName(onlineNameInput.value);
+  heartbeatOnline();
+  render();
+});
+challengeTargetInput.addEventListener("input", () => render());
+challengeRandomBtn.addEventListener("click", () => sendChallenge(true));
+challengeSpecificBtn.addEventListener("click", () => sendChallenge(false));
+pokeRandomBtn.addEventListener("click", () => sendPoke(true));
+pokeSpecificBtn.addEventListener("click", () => sendPoke(false));
+acceptChallengeBtn.addEventListener("click", () => answerChallenge(true));
+declineChallengeBtn.addEventListener("click", () => answerChallenge(false));
 
 playBtn.addEventListener("click", submitMove);
 moveInput.addEventListener("keydown", event => {

@@ -28,6 +28,7 @@ It contains:
 - a lite memory fallback for fast boot
 - browser local storage for continuing games and learning completed phone games
 - a DuckDNS-linked sync outbox that queues events until a compatible receiver exists
+- a multiplayer panel for random/specific challenges, pokes, anonymous players, and interrupt-to-accept flow
 
 ## File Map
 
@@ -38,6 +39,7 @@ Core app:
 - `app.js`: game state, side switching, Stockfish boot, memory loading, local persistence, and sync outbox
 - `tiberius-overlay.js`: JavaScript Tiberius move scoring, memory matching, prediction, and local learning
 - `stockfish-adapter.js`: UCI worker adapter for Stockfish
+- `multiplayer-client.js`: anonymous identity, challenge/poke requests, heartbeat, and move relay calls
 - `sw.js`: service worker and offline cache
 - `manifest.webmanifest`: installable PWA manifest
 - `icon.svg`: app icon
@@ -61,6 +63,7 @@ Docs:
 - `README.md`: quick project summary
 - `LICENSES.md`: license and source notes
 - `PORTFOLIO_RECONSTRUCTION.md`: this reconstruction record
+- `MULTIPLAYER_RELAY.md`: backend contract and high-traffic guardrails for online play
 
 ## Runtime Model
 

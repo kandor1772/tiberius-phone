@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <title>Tiberius</title>
-  <link rel="stylesheet" href="style.css?v=piece-room">
+  <link rel="stylesheet" href="style.css?v=multiplayer-ready">
 </head>
 <body>
   <main class="app-shell">
@@ -48,7 +48,7 @@
         <div id="status">Loading...</div>
         <div class="meta-grid">
           <div class="mini-card"><strong>Human</strong><span id="humanSide">black</span></div>
-          <div class="mini-card"><strong>Tiberius</strong><span id="tiberiusSide">white</span></div>
+          <div class="mini-card"><strong id="opponentLabel">Tiberius</strong><span id="tiberiusSide">white</span></div>
           <div class="mini-card"><strong>Turn</strong><span id="turnText">white</span></div>
           <div class="mini-card"><strong>Result</strong><span id="resultText">In progress</span></div>
         </div>
@@ -99,6 +99,32 @@
         <p id="syncText" class="small">Phone outbox ready.</p>
       </article>
 
+      <article>
+        <h2>Online Play</h2>
+        <div class="online-grid">
+          <label class="field-label">Your name
+            <input id="onlineNameInput" autocomplete="nickname" maxlength="32" placeholder="anonymous">
+          </label>
+          <label class="field-label">Specific player
+            <input id="challengeTargetInput" autocapitalize="none" autocomplete="off" maxlength="32" placeholder="handle or anon id">
+          </label>
+        </div>
+        <div class="online-actions">
+          <button id="challengeRandomBtn" type="button">Random Challenge</button>
+          <button id="challengeSpecificBtn" type="button">Challenge Player</button>
+          <button id="pokeRandomBtn" class="alt" type="button">Tap Random</button>
+          <button id="pokeSpecificBtn" class="alt" type="button">Tap Player</button>
+        </div>
+        <div id="incomingChallenge" class="challenge-card hidden">
+          <p id="incomingText" class="small">Incoming challenge.</p>
+          <div class="online-actions compact">
+            <button id="acceptChallengeBtn" type="button">Accept</button>
+            <button id="declineChallengeBtn" class="warn" type="button">Decline</button>
+          </div>
+        </div>
+        <p id="onlineStatus" class="small">Online relay not connected.</p>
+      </article>
+
       <details>
         <summary>Licenses</summary>
         <p>Stockfish is GPL-3.0. This build includes an adapter slot; publish the matching source/build notice when bundling a Stockfish WASM binary.</p>
@@ -106,6 +132,6 @@
     </section>
   </main>
 
-  <script type="module" src="app.js?v=black-state-parity"></script>
+  <script type="module" src="app.js?v=multiplayer-ready"></script>
 </body>
 </html>
