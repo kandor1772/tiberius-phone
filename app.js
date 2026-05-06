@@ -1,6 +1,6 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=duckdns-engine-parity";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=duckdns-engine-parity";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=black-board-parity";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=black-board-parity";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -54,7 +54,7 @@ let lastStrategy = "Balanced / not enough moves yet";
 let gameSerial = 0;
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
-const PHONE_STATE_KEY = "tiberius-phone-state-v2";
+const PHONE_STATE_KEY = "tiberius-phone-state-v3-black";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
 const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 
@@ -142,11 +142,10 @@ function render() {
   const legalTargets = selected
     ? chess.moves({ square: selected, verbose: true }).map(move => move.to)
     : [];
-  const board = chess.board();
   for (let r = 0; r < 8; r += 1) {
     for (let f = 0; f < 8; f += 1) {
       const square = `${files[f]}${ranks[r]}`;
-      const piece = board[r][f];
+      const piece = chess.get(square);
       const button = document.createElement("button");
       button.type = "button";
       button.className = `square ${squareColor(square)}`;
@@ -169,6 +168,11 @@ function render() {
   }
   humanSideEl.textContent = colorName(humanColor);
   tiberiusSideEl.textContent = colorName(tiberiusColor());
+  newWhiteBtn.classList.toggle("active-side", humanColor === "w");
+  newBlackBtn.classList.toggle("active-side", humanColor === "b");
+  newWhiteBtn.setAttribute("aria-pressed", String(humanColor === "w"));
+  newBlackBtn.setAttribute("aria-pressed", String(humanColor === "b"));
+  moveInput.placeholder = humanColor === "b" ? "black move: e7e5 or Nf6" : "white move: e2e4 or Nf3";
   turnText.textContent = colorName(chess.turn());
   resultTextEl.textContent = gameResult || (gameActive ? "In progress" : "Idle");
   movesEl.textContent = chess.history().length ? chess.history().join(" ") : "(none)";

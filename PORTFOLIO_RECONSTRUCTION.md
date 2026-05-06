@@ -18,6 +18,7 @@ It contains:
 - side selection: start as White or Black
 - board orientation for the chosen side
 - DuckDNS-style Black start: Tiberius waits for the Stockfish anchor before making White's first move
+- visible side controls above the board, with the active side highlighted
 - concede and reset board controls
 - move input by text or board taps
 - move list, FEN, result, turn, human side, and Tiberius side panels
@@ -73,7 +74,7 @@ Boot sequence:
 6. Replace the packaged lite memory with the full packaged memory once decompression/parsing finishes.
 7. Try optional live memory sources listed in `memory-sources.json`.
 
-When the human starts as Black, this matches the DuckDNS flow: the board is oriented for Black, Tiberius is White, and Tiberius does not make the first move until the Stockfish worker has booted or explicitly failed. If Stockfish fails, the app says so and falls back to packaged Tiberius memory instead of silently pretending the anchor was available.
+When the human starts as Black, this matches the DuckDNS flow: the board is oriented for Black, Tiberius is White, and Tiberius does not make the first move until the Stockfish worker has booted or explicitly failed. The flipped board renders pieces by looking up each visible coordinate directly, so the top-left square is `h1` in Black view and legal move targets match the displayed coordinates. If Stockfish fails, the app says so and falls back to packaged Tiberius memory instead of silently pretending the anchor was available.
 
 The status line reports the current truth, for example:
 

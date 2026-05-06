@@ -22,6 +22,7 @@ What runs on the phone:
 - DuckDNS-linked sync outbox for future shared Tiberius memory ingestion
 - Start as White, start as Black, concede, reset board, move list, FEN, and analysis panels
 - DuckDNS-style Black start: Tiberius waits for the Stockfish anchor before making White's first move
+- Black-side board orientation uses the actual square lookup for each flipped coordinate, so the visible board and legal move targets match
 
 Bundled engine:
 

@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v9-duckdns-engine-parity";
+const CACHE = "tiberius-phone-v10-black-board-parity";
 const ASSETS = [
   "./",
   "index.html",

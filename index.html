@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <title>Tiberius</title>
-  <link rel="stylesheet" href="style.css?v=duckdns-engine-parity">
+  <link rel="stylesheet" href="style.css?v=black-board-parity">
 </head>
 <body>
   <main class="app-shell">
@@ -21,33 +21,34 @@
         </div>
       </header>
 
-      <div id="board" class="board" aria-label="Chess board"></div>
-
-      <div class="controls">
-        <input id="moveInput" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="e2e4 or Nf3">
-        <button id="playBtn" type="button">Play</button>
-      </div>
-
       <div class="action-stack">
-        <article class="callout">
-          <h2 id="puzzleTitle">Current puzzle</h2>
-          <p id="puzzleText">Loading...</p>
-        </article>
-        <div class="actions">
+        <div class="actions" aria-label="Game controls">
           <button id="newWhiteBtn" type="button">Start as White</button>
           <button id="newBlackBtn" type="button">Start as Black</button>
           <button id="concedeBtn" class="warn" type="button">Concede</button>
           <button id="newGameBtn" class="alt" type="button">Reset Board</button>
         </div>
       </div>
+
+      <div id="board" class="board" aria-label="Chess board"></div>
+
+      <div class="controls">
+        <input id="moveInput" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="black move: e7e5 or Nf6">
+        <button id="playBtn" type="button">Play</button>
+      </div>
+
+      <article class="callout">
+        <h2 id="puzzleTitle">Current puzzle</h2>
+        <p id="puzzleText">Loading...</p>
+      </article>
     </section>
 
     <section class="analysis-panel">
       <div class="status-card">
         <div id="status">Loading...</div>
         <div class="meta-grid">
-          <div class="mini-card"><strong>Human</strong><span id="humanSide">white</span></div>
-          <div class="mini-card"><strong>Tiberius</strong><span id="tiberiusSide">black</span></div>
+          <div class="mini-card"><strong>Human</strong><span id="humanSide">black</span></div>
+          <div class="mini-card"><strong>Tiberius</strong><span id="tiberiusSide">white</span></div>
           <div class="mini-card"><strong>Turn</strong><span id="turnText">white</span></div>
           <div class="mini-card"><strong>Result</strong><span id="resultText">In progress</span></div>
         </div>
@@ -105,6 +106,6 @@
     </section>
   </main>
 
-  <script type="module" src="app.js?v=duckdns-engine-parity"></script>
+  <script type="module" src="app.js?v=black-board-parity"></script>
 </body>
 </html>

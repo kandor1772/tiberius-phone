@@ -103,6 +103,7 @@ input {
   grid-template-columns: repeat(8, 1fr);
   width: min(calc(100vw - 28px), 620px);
   aspect-ratio: 1;
+  margin-top: 12px;
   border: 3px solid #55331f;
   border-radius: 8px;
   background: var(--ink);
@@ -212,6 +213,14 @@ button.alt {
   background: linear-gradient(180deg, #7c6046, #4d3727);
 }
 
+button.active-side {
+  background: linear-gradient(180deg, #f1d47f, #bf8426);
+  color: #21170f;
+  box-shadow:
+    0 0 0 2px #5b351d inset,
+    0 2px 0 rgba(0, 0, 0, 0.18);
+}
+
 .analysis-panel {
   display: grid;
   gap: 12px;
@@ -229,6 +238,7 @@ details {
 }
 
 .callout {
+  margin-top: 12px;
   border-color: rgba(142, 47, 36, 0.42);
 }
 
