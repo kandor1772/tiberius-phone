@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v27-roster-rename";
+const CACHE = "tiberius-phone-v28-invite-confirm";
 const ASSETS = [
   "./",
   "index.html",

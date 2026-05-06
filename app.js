@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
-import { MultiplayerClient } from "./multiplayer-client.js?v=roster-rename";
+import { MultiplayerClient } from "./multiplayer-client.js?v=invite-confirm";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -72,6 +72,7 @@ let onlineNotice = "";
 let selectedPlayerId = "";
 let lastNotifiedChallengeId = "";
 let suspendedGameId = "";
+let inviteSending = false;
 let knownPlayers = [
   { id: "raypalmer", name: "RayPalmer", active: true, seeded: true },
   { id: "rick", name: "rick", active: true, seeded: true },
@@ -122,7 +123,7 @@ function setThinking(thinking) {
   moveInput.disabled = playBtn.disabled;
   concedeBtn.disabled = !gameActive || thinking || Boolean(gameResult);
   const selectedPlayer = selectedPlayerId ? knownPlayers.find(player => player.id === selectedPlayerId) : null;
-  playHumanBtn.disabled = thinking || isOnlineGame() || Boolean(selectedPlayer && !selectedPlayer.active);
+  playHumanBtn.disabled = thinking || inviteSending || isOnlineGame() || Boolean(selectedPlayer && !selectedPlayer.active);
   returnGameBtn.disabled = !latestReturnableGame();
   acceptChallengeBtn.disabled = !incomingChallenge || !gameActive || Boolean(gameResult);
   declineChallengeBtn.disabled = !incomingChallenge;
@@ -809,6 +810,7 @@ async function heartbeatOnline() {
 }
 
 async function sendChallenge(random, target = "") {
+  if (inviteSending) return;
   if (isOnlineGame()) {
     onlineNotice = "Finish or forfeit the current human game before sending another invite.";
     render();
@@ -816,21 +818,36 @@ async function sendChallenge(random, target = "") {
   }
   rememberSuspendedGame();
   const targetName = target ? playerLabel(target) : "";
-  onlineNotice = random ? "Looking for a random human player..." : `Looking for ${target || "player"}...`;
+  const inviteLabel = random ? "random player" : targetName || target || "player";
+  inviteSending = true;
+  onlineNotice = `Sending invite to ${inviteLabel}...`;
   render();
   queueSync("human_invite_sent", { target, target_name: targetName, random, inviter_color: "white" });
-  const data = await multiplayer.challenge({
-    target,
-    targetName,
-    random,
-    inviterColor: "w",
-    game: gameSnapshot(),
-  });
-  if (data?.game) {
-    enterOnlineGame(data.game, "inviter");
-    return;
+  try {
+    const data = await multiplayer.challenge({
+      target,
+      targetName,
+      random,
+      inviterColor: "w",
+      game: gameSnapshot(),
+    });
+    inviteSending = false;
+    if (data?.game) {
+      enterOnlineGame(data.game, "inviter");
+      return;
+    }
+    if (data?.ok || data?.message) {
+      onlineNotice = data.message || `Invite sent to ${inviteLabel}.`;
+      handleOnlineResponse({ ...data, message: onlineNotice });
+      return;
+    }
+    onlineNotice = `Invite to ${inviteLabel} was not sent. Relay did not confirm.`;
+    render();
+  } catch (_err) {
+    inviteSending = false;
+    onlineNotice = `Invite to ${inviteLabel} was not sent. Relay did not confirm.`;
+    render();
   }
-  handleOnlineResponse(data);
 }
 
 function playHuman() {
