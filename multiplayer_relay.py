@@ -27,12 +27,48 @@ class RelayState:
             str(player.get("id") or "").strip(),
             str(player.get("name") or "").strip(),
             str(player.get("handle") or "").strip(),
+            str(player.get("device_id") or player.get("deviceId") or "").strip(),
         }
         for alias in player.get("aliases") or []:
             ids.add(str(alias).strip())
         expanded = {item for item in ids if item}
         expanded.update(item.lower() for item in expanded)
         return expanded
+
+    def _record_for(self, player_id: str) -> dict | None:
+        candidates = {str(player_id or "").strip()}
+        candidates.update(item.lower() for item in list(candidates) if item)
+        for candidate in candidates:
+            record = self.players.get(candidate)
+            if record:
+                return record
+        return None
+
+    def _event_keys_for(self, player_id: str) -> set[str]:
+        keys = {str(player_id or "").strip()}
+        record = self._record_for(player_id)
+        if record:
+            keys.update(self._ids_for(record))
+            keys.update(str(alias).strip() for alias in record.get("aliases") or [])
+        keys = {item for item in keys if item}
+        keys.update(item.lower() for item in list(keys))
+        return keys
+
+    def queue_event(self, player_id: str, event: dict) -> None:
+        for key in self._event_keys_for(player_id):
+            self.events.setdefault(key, []).append(event)
+
+    def pop_events_for(self, player: dict) -> list[dict]:
+        events: list[dict] = []
+        seen: set[str] = set()
+        for key in self._ids_for(player):
+            for event in self.events.pop(key, []):
+                marker = json.dumps(event, sort_keys=True)
+                if marker in seen:
+                    continue
+                seen.add(marker)
+                events.append(event)
+        return events
 
     def touch_player(self, player: dict) -> dict:
         now = time.time()
@@ -107,7 +143,7 @@ class RelayState:
     def heartbeat(self, player: dict) -> dict:
         with self.lock:
             record = self.touch_player(player)
-            player_events = self.events.pop(record["id"], [])
+            player_events = self.pop_events_for(record)
             return {
                 "ok": True,
                 "players": self.roster(),
@@ -170,6 +206,7 @@ class RelayState:
                 "accepter_id": responder["id"],
                 "opponent": challenge["from_name"],
                 "opponent_name": challenge["from_name"],
+                "opponent_id": challenge["from"],
             }
             self.games[game_id] = game
             inviter_event = {
@@ -178,10 +215,11 @@ class RelayState:
                     **game,
                     "opponent": responder["name"],
                     "opponent_name": responder["name"],
+                    "opponent_id": responder["id"],
                     "color": "w",
                 },
             }
-            self.events.setdefault(challenge["from"], []).append(inviter_event)
+            self.queue_event(challenge["from"], inviter_event)
             return {
                 "ok": True,
                 "players": self.roster(),
@@ -200,7 +238,7 @@ class RelayState:
             for target in recipients:
                 if target == sender["id"]:
                     continue
-                self.events.setdefault(target, []).append({
+                self.queue_event(target, {
                     "type": "move",
                     "game_id": game_id,
                     "move": payload.get("move"),
@@ -217,7 +255,7 @@ class RelayState:
             if game:
                 for target in [game["white"], game["black"]]:
                     if target != sender["id"]:
-                        self.events.setdefault(target, []).append({
+                        self.queue_event(target, {
                             "type": "forfeit",
                             "game_id": game_id,
                             "from": sender["id"],
