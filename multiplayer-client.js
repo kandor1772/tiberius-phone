@@ -1,4 +1,7 @@
 const PLAYER_KEY = "tiberius-phone-player-v1";
+const NTFY_SEEN_KEY = "tiberius-phone-ntfy-seen-v1";
+const NTFY_BASE = "https://ntfy.sh";
+const NTFY_PREFIX = "tiberius-phone-chess-v1";
 
 function canonicalHandle(name) {
   const handle = String(name || "").trim().slice(0, 32);
@@ -18,6 +21,24 @@ function normalizePlayerIdentity(player) {
     handle: handle || "",
     aliases: [...aliases].slice(0, 8),
   };
+}
+
+function safeTopicPart(value) {
+  return String(value || "anon").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 48) || "anon";
+}
+
+function readSeen() {
+  try {
+    return JSON.parse(localStorage.getItem(NTFY_SEEN_KEY)) || {};
+  } catch (_err) {
+    return {};
+  }
+}
+
+function writeSeen(seen) {
+  try {
+    localStorage.setItem(NTFY_SEEN_KEY, JSON.stringify(seen));
+  } catch (_err) {}
 }
 
 function stableId() {
@@ -42,6 +63,9 @@ export class MultiplayerClient {
     this.player = stableId();
     this.connected = false;
     this.lastError = "";
+    this.transport = "";
+    this.incomingById = new Map();
+    this.gamesById = new Map();
   }
 
   setName(name) {
@@ -77,6 +101,7 @@ export class MultiplayerClient {
           continue;
         }
         this.connected = true;
+        this.transport = endpoint.includes("127.0.0.1") || endpoint.includes("localhost") ? "local relay" : "DuckDNS relay";
         this.lastError = "";
         return response.json().catch(() => ({}));
       } catch (error) {
@@ -88,27 +113,202 @@ export class MultiplayerClient {
     return null;
   }
 
-  heartbeat(state) {
-    return this.request("/heartbeat", state, 2600);
+  topicFor(id) {
+    return `${NTFY_PREFIX}-${safeTopicPart(id)}`;
   }
 
-  challenge({ target = "", targetName = "", random = false, inviterColor = "w", game }) {
-    return this.request("/challenge", { target, targetName, targetHandle: targetName || target, random, inviterColor, game });
+  async publishNtfy(target, message) {
+    const topic = this.topicFor(target);
+    const response = await fetch(`${NTFY_BASE}/${topic}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "text/plain",
+        "Title": "Tiberius",
+        "Tags": "chess",
+      },
+      body: JSON.stringify(message),
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return response.json().catch(() => ({}));
+  }
+
+  async pollNtfy() {
+    const topic = this.topicFor(this.player.id);
+    const response = await fetch(`${NTFY_BASE}/${topic}/json?poll=1&since=30m`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    const text = await response.text();
+    const seen = readSeen();
+    const seenForTopic = new Set(seen[topic] || []);
+    const incoming = [];
+    const events = [];
+    for (const line of text.split(/\n+/)) {
+      if (!line.trim()) continue;
+      let envelope;
+      try {
+        envelope = JSON.parse(line);
+      } catch (_err) {
+        continue;
+      }
+      if (envelope.event !== "message" || seenForTopic.has(envelope.id)) continue;
+      seenForTopic.add(envelope.id);
+      let message;
+      try {
+        message = JSON.parse(envelope.message || "{}");
+      } catch (_err) {
+        continue;
+      }
+      if (message.kind === "challenge") {
+        const challenge = {
+          id: message.id,
+          challenge_id: message.id,
+          from: message.from,
+          from_name: message.from_name || message.from,
+          target: message.target,
+          target_name: message.target_name || message.target,
+          created_at: message.created_at,
+          transport: "ntfy",
+        };
+        this.incomingById.set(challenge.id, challenge);
+        incoming.push(challenge);
+      } else if (message.kind === "game_start" && message.game) {
+        this.gamesById.set(message.game.id, message.game);
+        events.push({ type: "game_start", game: message.game });
+      } else if (message.kind === "move") {
+        events.push({ type: "move", game_id: message.game_id, move: message.move, fen: message.fen, pgn: message.pgn });
+      } else if (message.kind === "forfeit") {
+        events.push({ type: "forfeit", game_id: message.game_id, from: message.from, reason: message.reason });
+      }
+    }
+    seen[topic] = [...seenForTopic].slice(-200);
+    writeSeen(seen);
+    this.connected = true;
+    this.transport = "public ntfy relay";
+    this.lastError = "";
+    return {
+      ok: true,
+      players: [
+        { id: "RP", name: "RP", active: true, available: true, seeded: true },
+        { id: "rick", name: "rick", active: true, available: true, seeded: true },
+      ],
+      incoming,
+      events,
+      message: "Relay connected.",
+    };
+  }
+
+  async heartbeat(state) {
+    const data = await this.request("/heartbeat", state, 1200);
+    if (data) return data;
+    try {
+      return await this.pollNtfy();
+    } catch (error) {
+      this.connected = false;
+      this.transport = "";
+      this.lastError = error?.message || "relay unavailable";
+      return null;
+    }
+  }
+
+  async challenge({ target = "", targetName = "", random = false, inviterColor = "w", game }) {
+    const payload = { target, targetName, targetHandle: targetName || target, random, inviterColor, game };
+    const data = await this.request("/challenge", payload, 1200);
+    if (data) return data;
+    const destination = targetName || target;
+    if (!destination) return null;
+    const challengeId = `ntfy-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      await this.publishNtfy(destination, {
+        kind: "challenge",
+        id: challengeId,
+        from: this.player.id,
+        from_name: this.label(),
+        target: destination,
+        target_name: destination,
+        inviter_color: "w",
+        created_at: new Date().toISOString(),
+      });
+      this.connected = true;
+      this.transport = "public ntfy relay";
+      return {
+        ok: true,
+        players: [
+          { id: "RP", name: "RP", active: true, available: true, seeded: true },
+          { id: "rick", name: "rick", active: true, available: true, seeded: true },
+        ],
+        message: `Invite sent to ${destination}.`,
+      };
+    } catch (error) {
+      this.connected = false;
+      this.lastError = error?.message || "relay unavailable";
+      return null;
+    }
   }
 
   poke({ target = "", random = false, game }) {
     return this.request("/poke", { target, random, game });
   }
 
-  respond({ challengeId, accept }) {
-    return this.request("/challenge/respond", { challengeId, accept });
+  async respond({ challengeId, accept }) {
+    const data = await this.request("/challenge/respond", { challengeId, accept }, 1200);
+    if (data) return data;
+    const challenge = this.incomingById.get(challengeId);
+    if (!challenge) return null;
+    if (!accept) {
+      this.incomingById.delete(challengeId);
+      return { ok: true, message: "Invite declined." };
+    }
+    const gameId = `ntfy-game-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const accepterGame = {
+      id: gameId,
+      inviter_id: challenge.from,
+      accepter_id: this.player.id,
+      opponent: challenge.from_name || challenge.from,
+      opponent_name: challenge.from_name || challenge.from,
+      opponent_id: challenge.from,
+      color: "b",
+    };
+    const inviterGame = {
+      ...accepterGame,
+      opponent: this.label(),
+      opponent_name: this.label(),
+      opponent_id: this.player.id,
+      color: "w",
+    };
+    try {
+      await this.publishNtfy(challenge.from, { kind: "game_start", game: inviterGame });
+      this.gamesById.set(gameId, accepterGame);
+      this.incomingById.delete(challengeId);
+      this.connected = true;
+      this.transport = "public ntfy relay";
+      return { ok: true, game: accepterGame, message: "Invite accepted." };
+    } catch (error) {
+      this.lastError = error?.message || "relay unavailable";
+      return null;
+    }
   }
 
-  move({ gameId, move, fen, pgn }) {
-    return this.request("/game/move", { gameId, move, fen, pgn }, 2600);
+  async move({ gameId, move, fen, pgn }) {
+    const data = await this.request("/game/move", { gameId, move, fen, pgn }, 1200);
+    if (data) return data;
+    const game = this.gamesById.get(gameId);
+    if (!game?.opponent_id) return null;
+    try {
+      await this.publishNtfy(game.opponent_id, { kind: "move", game_id: gameId, move, fen, pgn });
+      this.connected = true;
+      this.transport = "public ntfy relay";
+      return { ok: true, message: "Move relayed." };
+    } catch (_err) {
+      return null;
+    }
   }
 
-  forfeit({ gameId, reason = "interrupted" }) {
-    return this.request("/game/forfeit", { gameId, reason }, 2600);
+  async forfeit({ gameId, reason = "interrupted" }) {
+    const data = await this.request("/game/forfeit", { gameId, reason }, 1200);
+    if (data) return data;
+    const game = this.gamesById.get(gameId);
+    if (game?.opponent_id) {
+      await this.publishNtfy(game.opponent_id, { kind: "forfeit", game_id: gameId, from: this.player.id, reason }).catch(() => {});
+    }
+    return { ok: true, message: "Forfeit relayed." };
   }
 }

@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
-import { MultiplayerClient } from "./multiplayer-client.js?v=local-relay";
+import { MultiplayerClient } from "./multiplayer-client.js?v=public-relay";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -203,7 +203,7 @@ function gameSnapshot() {
 }
 
 function onlineSummary() {
-  const relay = multiplayer.connected ? "Relay connected" : "Relay not connected";
+  const relay = multiplayer.connected ? `Relay connected${multiplayer.transport ? ` (${multiplayer.transport})` : ""}` : "Relay not connected";
   const available = isOnlineGame()
     ? "busy in a human game; incoming invites can interrupt, outgoing invites are disabled"
     : gameActive && !gameResult ? "available for human invites" : "unavailable until a board is active";
@@ -728,6 +728,13 @@ function handleOnlineResponse(data) {
   if (Array.isArray(data.events)) {
     for (const event of data.events) {
       if (event.type === "move") applyRemoteMove(event);
+      if (event.type === "game_start" && event.game) enterOnlineGame(event.game, "inviter");
+      if (event.type === "forfeit" && onlineGame && event.game_id === onlineGame.id) {
+        statusMessage = `${onlineGame.opponent} forfeited.`;
+        gameResult = humanColor === "w" ? "1-0" : "0-1";
+        gameActive = false;
+        returnToSuspendedGame(`${onlineGame.opponent} forfeited. Returned to Tiberius.`);
+      }
       if (event.type === "challenge") {
         incomingChallenge = event;
         notifyIncomingChallenge(incomingChallenge);
