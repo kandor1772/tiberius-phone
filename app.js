@@ -3,7 +3,7 @@ import { StockfishAdapter } from "./stockfish-adapter.js";
 import { TiberiusOverlay } from "./tiberius-overlay.js";
 
 const PIECES = {
-  wp: "♙", wn: "♘", wb: "♗", wr: "♖", wq: "♕", wk: "♔",
+  wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
   bp: "♟", bn: "♞", bb: "♝", br: "♜", bq: "♛", bk: "♚",
 };
 
@@ -55,7 +55,12 @@ function render() {
       if (selected === square) button.classList.add("selected");
       if (legalTargets.includes(square)) button.classList.add("target");
       button.dataset.square = square;
-      if (piece) button.textContent = PIECES[`${piece.color}${piece.type}`] || "";
+      if (piece) {
+        const glyph = document.createElement("span");
+        glyph.className = `piece piece-${piece.color === "w" ? "white" : "black"}`;
+        glyph.textContent = PIECES[`${piece.color}${piece.type}`] || "";
+        button.appendChild(glyph);
+      }
       const coord = document.createElement("span");
       coord.className = "coord";
       coord.textContent = square;
