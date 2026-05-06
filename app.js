@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
-import { MultiplayerClient } from "./multiplayer-client.js?v=invite-confirm";
+import { MultiplayerClient } from "./multiplayer-client.js?v=invite-outbox";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -40,6 +40,7 @@ const syncTextEl = document.getElementById("syncText");
 const onlineNameInput = document.getElementById("onlineNameInput");
 const playerRosterEl = document.getElementById("playerRoster");
 const playHumanBtn = document.getElementById("playHumanBtn");
+const inviteOutboxEl = document.getElementById("inviteOutbox");
 const incomingChallengeEl = document.getElementById("incomingChallenge");
 const incomingTextEl = document.getElementById("incomingText");
 const acceptChallengeBtn = document.getElementById("acceptChallengeBtn");
@@ -73,6 +74,7 @@ let selectedPlayerId = "";
 let lastNotifiedChallengeId = "";
 let suspendedGameId = "";
 let inviteSending = false;
+let inviteOutboxMessage = "";
 let knownPlayers = [
   { id: "raypalmer", name: "RayPalmer", active: true, seeded: true },
   { id: "rick", name: "rick", active: true, seeded: true },
@@ -296,6 +298,12 @@ function renderRoster() {
   }
 }
 
+function renderInviteOutbox() {
+  if (!inviteOutboxEl) return;
+  inviteOutboxEl.classList.toggle("hidden", !inviteOutboxMessage);
+  inviteOutboxEl.textContent = inviteOutboxMessage;
+}
+
 function notifyIncomingChallenge(challenge) {
   if (!challenge) return;
   const id = challenge.id || challenge.challenge_id || `${challenge.from || ""}-${challenge.created_at || ""}`;
@@ -370,6 +378,7 @@ function render() {
   }
   syncSummary();
   onlineSummary();
+  renderInviteOutbox();
   renderSavedGames();
   setThinking(engineThinking);
 }
@@ -820,7 +829,8 @@ async function sendChallenge(random, target = "") {
   const targetName = target ? playerLabel(target) : "";
   const inviteLabel = random ? "random player" : targetName || target || "player";
   inviteSending = true;
-  onlineNotice = `Sending invite to ${inviteLabel}...`;
+  inviteOutboxMessage = `Sending invite to ${inviteLabel}...`;
+  onlineNotice = inviteOutboxMessage;
   render();
   queueSync("human_invite_sent", { target, target_name: targetName, random, inviter_color: "white" });
   try {
@@ -837,15 +847,18 @@ async function sendChallenge(random, target = "") {
       return;
     }
     if (data?.ok || data?.message) {
-      onlineNotice = data.message || `Invite sent to ${inviteLabel}.`;
+      inviteOutboxMessage = data.message || `Invite sent to ${inviteLabel}.`;
+      onlineNotice = inviteOutboxMessage;
       handleOnlineResponse({ ...data, message: onlineNotice });
       return;
     }
-    onlineNotice = `Invite to ${inviteLabel} was not sent. Relay did not confirm.`;
+    inviteOutboxMessage = `Invite queued for ${inviteLabel}. Waiting for relay confirmation.`;
+    onlineNotice = inviteOutboxMessage;
     render();
   } catch (_err) {
     inviteSending = false;
-    onlineNotice = `Invite to ${inviteLabel} was not sent. Relay did not confirm.`;
+    inviteOutboxMessage = `Invite queued for ${inviteLabel}. Waiting for relay confirmation.`;
+    onlineNotice = inviteOutboxMessage;
     render();
   }
 }
