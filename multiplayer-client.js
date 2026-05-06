@@ -12,12 +12,14 @@ function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
   const name = String(player?.name || "").trim().slice(0, 32);
   const handle = canonicalHandle(name);
   const id = handle || player?.id || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const deviceId = player?.device_id || player?.deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const aliases = new Set(preserveAliases && Array.isArray(player?.aliases) ? player.aliases : []);
   if (preserveAliases && player?.id && player.id !== id) aliases.add(player.id);
   return {
     id,
     name,
     handle: handle || "",
+    device_id: deviceId,
     aliases: [...aliases].slice(0, 8),
   };
 }
@@ -30,17 +32,21 @@ function unique(items) {
   return [...new Set(items.filter(Boolean))];
 }
 
-function readSeen() {
+function seenKeyFor(playerId) {
+  return `${NTFY_SEEN_KEY}:${safeTopicPart(playerId)}`;
+}
+
+function readSeen(playerId) {
   try {
-    return JSON.parse(localStorage.getItem(NTFY_SEEN_KEY)) || {};
+    return JSON.parse(localStorage.getItem(seenKeyFor(playerId))) || {};
   } catch (_err) {
     return {};
   }
 }
 
-function writeSeen(seen) {
+function writeSeen(playerId, seen) {
   try {
-    localStorage.setItem(NTFY_SEEN_KEY, JSON.stringify(seen));
+    localStorage.setItem(seenKeyFor(playerId), JSON.stringify(seen));
   } catch (_err) {}
 }
 
@@ -145,7 +151,7 @@ export class MultiplayerClient {
   }
 
   async pollNtfy() {
-    const seen = readSeen();
+    const seen = readSeen(this.player.id);
     const incoming = [];
     const events = [];
     for (const topic of this.topicsForPlayer()) {
@@ -169,6 +175,7 @@ export class MultiplayerClient {
         } catch (_err) {
           continue;
         }
+        if (message.from_device && message.from_device === this.player.device_id) continue;
         if (message.kind === "challenge") {
           const challenge = {
             id: message.id,
@@ -193,7 +200,7 @@ export class MultiplayerClient {
       }
       seen[topic] = [...seenForTopic].slice(-200);
     }
-    writeSeen(seen);
+    writeSeen(this.player.id, seen);
     this.connected = true;
     this.transport = "public ntfy relay";
     this.lastError = "";
@@ -235,6 +242,7 @@ export class MultiplayerClient {
         id: challengeId,
         from: this.player.id,
         from_name: this.label(),
+        from_device: this.player.device_id,
         target: destination,
         target_name: destination,
         inviter_color: "w",
@@ -288,7 +296,7 @@ export class MultiplayerClient {
       color: "w",
     };
     try {
-      await this.publishNtfy(challenge.from, { kind: "game_start", game: inviterGame });
+      await this.publishNtfy(challenge.from, { kind: "game_start", from_device: this.player.device_id, game: inviterGame });
       this.gamesById.set(gameId, accepterGame);
       this.incomingById.delete(challengeId);
       this.connected = true;
@@ -306,7 +314,7 @@ export class MultiplayerClient {
     const game = this.gamesById.get(gameId);
     if (!game?.opponent_id) return null;
     try {
-      await this.publishNtfy(game.opponent_id, { kind: "move", game_id: gameId, move, fen, pgn });
+      await this.publishNtfy(game.opponent_id, { kind: "move", from_device: this.player.device_id, game_id: gameId, move, fen, pgn });
       this.connected = true;
       this.transport = "public ntfy relay";
       return { ok: true, message: "Move relayed." };
@@ -320,7 +328,7 @@ export class MultiplayerClient {
     if (data) return data;
     const game = this.gamesById.get(gameId);
     if (game?.opponent_id) {
-      await this.publishNtfy(game.opponent_id, { kind: "forfeit", game_id: gameId, from: this.player.id, reason }).catch(() => {});
+      await this.publishNtfy(game.opponent_id, { kind: "forfeit", from_device: this.player.device_id, game_id: gameId, from: this.player.id, reason }).catch(() => {});
     }
     return { ok: true, message: "Forfeit relayed." };
   }

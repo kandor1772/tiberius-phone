@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
-import { MultiplayerClient } from "./multiplayer-client.js?v=invite-outbox";
+import { MultiplayerClient } from "./multiplayer-client.js?v=profile-isolation";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -89,6 +89,14 @@ const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 const MULTIPLAYER_ENDPOINTS = [
 ];
 const multiplayer = new MultiplayerClient({ endpoints: MULTIPLAYER_ENDPOINTS });
+
+function profileScope() {
+  return `${multiplayer.player.id}:${multiplayer.player.device_id || "device"}`;
+}
+
+function scopedKey(base) {
+  return `${base}:${profileScope()}`;
+}
 
 function uci(move) {
   return `${move.from}${move.to}${move.promotion || ""}`;
@@ -319,8 +327,32 @@ function notifyIncomingChallenge(challenge) {
 }
 
 function syncOnlineName({ heartbeat = false } = {}) {
+  saveState("profile_before_switch", { sync: false });
   const before = multiplayer.label();
+  const beforeScope = profileScope();
   multiplayer.setName(onlineNameInput.value);
+  if (profileScope() !== beforeScope) {
+    phoneMemory = emptyMemory({ source: "phone-local" });
+    loadPhoneMemory();
+    rebuildOverlay();
+    currentGameId = "";
+    suspendedGameId = "";
+    incomingChallenge = null;
+    selectedPlayerId = "";
+    inviteOutboxMessage = "";
+    if (!loadSavedState()) {
+      gameSerial += 1;
+      currentGameId = makeGameId();
+      chess.reset();
+      gameActive = true;
+      gameResult = "";
+      onlineGame = null;
+      selected = null;
+      trajectory = [];
+      statusMessage = `Profile switched to ${multiplayer.label()}. New board started.`;
+      saveState("profile_started", { sync: false });
+    }
+  }
   mergePlayers([]);
   if (heartbeat || multiplayer.label() !== before) heartbeatOnline();
 }
@@ -420,13 +452,13 @@ function addMemorySource(memory) {
 
 function savePhoneMemory() {
   try {
-    localStorage.setItem(PHONE_MEMORY_KEY, JSON.stringify(phoneMemory));
+    localStorage.setItem(scopedKey(PHONE_MEMORY_KEY), JSON.stringify(phoneMemory));
   } catch (_err) {}
 }
 
 function readSavedGames() {
   try {
-    return JSON.parse(localStorage.getItem(SAVED_GAMES_KEY)) || [];
+    return JSON.parse(localStorage.getItem(scopedKey(SAVED_GAMES_KEY))) || [];
   } catch (_err) {
     return [];
   }
@@ -434,7 +466,7 @@ function readSavedGames() {
 
 function writeSavedGames(games) {
   try {
-    localStorage.setItem(SAVED_GAMES_KEY, JSON.stringify(games.slice(0, 40)));
+    localStorage.setItem(scopedKey(SAVED_GAMES_KEY), JSON.stringify(games.slice(0, 40)));
   } catch (_err) {}
 }
 
@@ -496,7 +528,7 @@ function rememberSuspendedGame() {
   if (!suspendedGameId) {
     suspendedGameId = currentGameId;
     try {
-      localStorage.setItem(SUSPENDED_GAME_KEY, suspendedGameId);
+      localStorage.setItem(scopedKey(SUSPENDED_GAME_KEY), suspendedGameId);
     } catch (_err) {}
   }
   saveState("suspended_for_human", { sync: true });
@@ -506,14 +538,14 @@ function rememberSuspendedGame() {
 function clearSuspendedGame() {
   suspendedGameId = "";
   try {
-    localStorage.removeItem(SUSPENDED_GAME_KEY);
+    localStorage.removeItem(scopedKey(SUSPENDED_GAME_KEY));
   } catch (_err) {}
 }
 
 function suspendedGameRecord() {
   if (!suspendedGameId) {
     try {
-      suspendedGameId = localStorage.getItem(SUSPENDED_GAME_KEY) || "";
+      suspendedGameId = localStorage.getItem(scopedKey(SUSPENDED_GAME_KEY)) || "";
     } catch (_err) {}
   }
   return savedGameById(suspendedGameId);
@@ -542,7 +574,7 @@ function returnToSuspendedGame(message = "Human game ended. Returned to Tiberius
 function saveState(reason = "progress", { sync = true } = {}) {
   const record = gameRecord(reason);
   try {
-    localStorage.setItem(PHONE_STATE_KEY, JSON.stringify({
+    localStorage.setItem(scopedKey(PHONE_STATE_KEY), JSON.stringify({
       gameId: currentGameId,
       fen: chess.fen(),
       humanColor,
@@ -562,7 +594,7 @@ function saveState(reason = "progress", { sync = true } = {}) {
 
 function loadSavedState() {
   try {
-    const saved = JSON.parse(localStorage.getItem(PHONE_STATE_KEY));
+    const saved = JSON.parse(localStorage.getItem(scopedKey(PHONE_STATE_KEY)));
     if (!saved) return false;
     currentGameId = saved.gameId || makeGameId();
     humanColor = saved.humanColor === "b" ? "b" : "w";
@@ -641,7 +673,7 @@ function renderSavedGames() {
 
 function readOutbox() {
   try {
-    return JSON.parse(localStorage.getItem(PHONE_OUTBOX_KEY)) || [];
+    return JSON.parse(localStorage.getItem(scopedKey(PHONE_OUTBOX_KEY))) || [];
   } catch (_err) {
     return [];
   }
@@ -649,7 +681,7 @@ function readOutbox() {
 
 function writeOutbox(events) {
   try {
-    localStorage.setItem(PHONE_OUTBOX_KEY, JSON.stringify(events.slice(-2000)));
+    localStorage.setItem(scopedKey(PHONE_OUTBOX_KEY), JSON.stringify(events.slice(-2000)));
   } catch (_err) {}
 }
 
@@ -1134,7 +1166,7 @@ async function loadManifest() {
 
 function loadPhoneMemory() {
   try {
-    phoneMemory = JSON.parse(localStorage.getItem(PHONE_MEMORY_KEY)) || phoneMemory;
+    phoneMemory = JSON.parse(localStorage.getItem(scopedKey(PHONE_MEMORY_KEY))) || phoneMemory;
   } catch (_err) {
     phoneMemory = emptyMemory({ source: "phone-local" });
   }
