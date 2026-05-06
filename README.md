@@ -10,6 +10,10 @@ What runs on the phone:
 - Compact Tiberius memory pack
 - Bundled Stockfish 18 lite single-threaded WASM worker
 - Stockfish full-strength options: `UCI_LimitStrength=false`, `Skill Level=20`
+- Full packaged Tiberius memory loaded from `tiberius-memory-full.json.gz`
+- Lite memory fallback if the browser cannot load the compressed full pack
+- Optional live memory sources from `memory-sources.json`
+- Completed phone games learned into browser local storage
 
 Bundled engine:
 

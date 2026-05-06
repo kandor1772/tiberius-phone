@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v2-stockfish";
+const CACHE = "tiberius-phone-v4-full-memory";
 const ASSETS = [
   "./",
   "index.html",
@@ -6,6 +6,8 @@ const ASSETS = [
   "app.js",
   "tiberius-overlay.js",
   "stockfish-adapter.js",
+  "memory-sources.json",
+  "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
   "vendor/stockfish/stockfish.wasm",
   "vendor/stockfish/Copying.txt",

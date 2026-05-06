@@ -1,6 +1,6 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js";
-import { TiberiusOverlay } from "./tiberius-overlay.js";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -26,6 +26,13 @@ let stockfish = new StockfishAdapter();
 let selected = null;
 let stockfishReady = false;
 let engineThinking = false;
+let sourceMemories = [];
+let phoneMemory = emptyMemory({ source: "phone-local" });
+let loadedMemorySources = [];
+let failedMemorySources = [];
+let trajectory = [];
+
+const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
 
 function uci(move) {
   return `${move.from}${move.to}${move.promotion || ""}`;
@@ -35,6 +42,19 @@ function setThinking(thinking) {
   engineThinking = thinking;
   playBtn.disabled = thinking || chess.isGameOver() || chess.turn() !== "w";
   moveInput.disabled = playBtn.disabled;
+}
+
+function memorySummaryText() {
+  const summary = overlay.sourceSummary();
+  const failed = failedMemorySources.length ? ` ${failedMemorySources.length} source${failedMemorySources.length === 1 ? "" : "s"} unreachable.` : "";
+  return `Memory: ${summary.sources} source${summary.sources === 1 ? "" : "s"}, ${summary.globalMoves} learned patterns, ${summary.positions} exact positions, ${summary.learned} local moves.${failed}`;
+}
+
+function refreshEngineStatus() {
+  const engine = stockfishReady
+    ? "Running on phone with Stockfish worker + Tiberius overlay."
+    : "Running on phone with Tiberius overlay. Stockfish WASM not bundled yet.";
+  engineStatusEl.textContent = `${engine} ${memorySummaryText()}`;
 }
 
 function render() {
@@ -84,6 +104,44 @@ function tryBoardMove(from, to) {
   }
 }
 
+function rememberMove(beforeFen, move) {
+  trajectory.push({ fen: beforeFen, move: { ...move } });
+}
+
+function whiteScore() {
+  if (chess.isCheckmate()) return chess.turn() === "w" ? 0 : 1;
+  if (chess.isDraw()) return 0.5;
+  return 0.5;
+}
+
+function bucketForPosition(fen, finalWhiteScore) {
+  const side = fen.split(" ")[1];
+  const score = side === "w" ? finalWhiteScore : finalWhiteScore === 0.5 ? 0.5 : 1 - finalWhiteScore;
+  return score > 0.66 ? "w" : score >= 0.34 ? "d" : "l";
+}
+
+function rebuildOverlay() {
+  overlay = new TiberiusOverlay(mergeMemorySources([...sourceMemories, phoneMemory]));
+}
+
+function savePhoneMemory() {
+  try {
+    localStorage.setItem(PHONE_MEMORY_KEY, JSON.stringify(phoneMemory));
+  } catch (_err) {}
+}
+
+function completeGameLearning() {
+  if (!chess.isGameOver() || !trajectory.length) return;
+  const score = whiteScore();
+  for (const item of trajectory) {
+    learnMemory(phoneMemory, new Chess(item.fen), item.move, bucketForPosition(item.fen, score));
+  }
+  trajectory = [];
+  savePhoneMemory();
+  rebuildOverlay();
+  refreshEngineStatus();
+}
+
 function onSquare(square) {
   if (engineThinking || chess.turn() !== "w" || chess.isGameOver()) return;
   const piece = chess.get(square);
@@ -102,9 +160,11 @@ function onSquare(square) {
   }
 
   if (selected) {
+    const beforeFen = chess.fen();
     const result = tryBoardMove(selected, square);
     selected = null;
     if (result) {
+      rememberMove(beforeFen, result);
       afterHumanMove(result);
       return;
     }
@@ -136,11 +196,17 @@ async function afterHumanMove(move) {
   render();
   predictionTitle.textContent = `You played ${move.san}`;
   predictionText.textContent = "Tiberius is checking Stockfish if present, then choosing an overlay move on the phone.";
+  if (chess.isGameOver()) {
+    completeGameLearning();
+    render();
+    return;
+  }
   await engineMove();
 }
 
 async function engineMove() {
   if (chess.isGameOver()) {
+    completeGameLearning();
     render();
     return;
   }
@@ -158,6 +224,7 @@ async function engineMove() {
   }
   const before = chess.fen();
   const played = chess.move(decision.move);
+  rememberMove(before, played);
   evalText.textContent = stockfishBest
     ? `Stockfish anchor available. Tiberius chose ${played.san}.`
     : `No Stockfish binary bundled yet. Tiberius chose ${played.san} from overlay heuristics.`;
@@ -169,6 +236,7 @@ async function engineMove() {
     : "This build is running the legal on-phone Tiberius overlay now. Drop in GPL Stockfish WASM to enable full Stockfish anchoring.";
   puzzleText.textContent = "Tiberius just predicted your behavior from memory. Make the board stop matching the habit it expects.";
   setThinking(false);
+  completeGameLearning();
   render();
 }
 
@@ -176,27 +244,77 @@ function submitMove() {
   if (engineThinking || chess.turn() !== "w") return;
   const text = moveInput.value.trim();
   if (!text) return;
+  const beforeFen = chess.fen();
   const result = chess.move(text, { sloppy: true });
   if (!result) {
     predictionTitle.textContent = "Illegal move";
     predictionText.textContent = "Try SAN like Nf3 or UCI-like entry by tapping the board.";
     return;
   }
+  rememberMove(beforeFen, result);
   moveInput.value = "";
   afterHumanMove(result);
 }
 
-async function boot() {
-  try {
-    const memory = await fetch("tiberius-memory-lite.json", { cache: "force-cache" }).then(r => r.json());
-    overlay = new TiberiusOverlay(memory);
-  } catch (_err) {
-    overlay = new TiberiusOverlay();
+async function fetchMemorySource(source) {
+  const url = source.url;
+  const response = await fetch(url, { cache: source.required ? "force-cache" : "no-store" });
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  let memory;
+  if (source.compression === "gzip") {
+    if (!("DecompressionStream" in window) || !response.body) {
+      throw new Error("gzip memory source is not supported in this browser");
+    }
+    const stream = response.body.pipeThrough(new DecompressionStream("gzip"));
+    memory = JSON.parse(await new Response(stream).text());
+  } else {
+    memory = await response.json();
   }
+  memory.meta ||= {};
+  memory.meta.source_label = source.label || url;
+  memory.meta.url = url;
+  return memory;
+}
+
+async function loadMemory() {
+  let manifest = { sources: [{ label: "Bundled Tiberius memory pack", url: "tiberius-memory-lite.json", required: true }] };
+  try {
+    manifest = await fetch("memory-sources.json", { cache: "no-store" }).then(r => r.json());
+  } catch (_err) {}
+
+  sourceMemories = [];
+  loadedMemorySources = [];
+  failedMemorySources = [];
+  const loadedGroups = new Set();
+  for (const source of manifest.sources || []) {
+    if (source.group && loadedGroups.has(source.group)) continue;
+    try {
+      const memory = await fetchMemorySource(source);
+      sourceMemories.push(memory);
+      loadedMemorySources.push(source.label || source.url);
+      if (source.group) loadedGroups.add(source.group);
+    } catch (_err) {
+      failedMemorySources.push(source.label || source.url);
+      if (source.required) {
+        sourceMemories.push(emptyMemory({ source_label: `${source.label || source.url} unavailable` }));
+      }
+    }
+  }
+
+  try {
+    phoneMemory = JSON.parse(localStorage.getItem(PHONE_MEMORY_KEY)) || phoneMemory;
+  } catch (_err) {
+    phoneMemory = emptyMemory({ source: "phone-local" });
+  }
+  phoneMemory.meta ||= {};
+  phoneMemory.meta.source_label = "Phone local learning";
+  rebuildOverlay();
+}
+
+async function boot() {
+  await loadMemory();
   stockfishReady = await stockfish.boot();
-  engineStatusEl.textContent = stockfishReady
-    ? "Running on phone with Stockfish worker + Tiberius overlay."
-    : "Running on phone with Tiberius overlay. Stockfish WASM not bundled yet.";
+  refreshEngineStatus();
   explainForHumanTurn();
   render();
 }
@@ -204,6 +322,7 @@ async function boot() {
 newGameBtn.addEventListener("click", () => {
   chess.reset();
   selected = null;
+  trajectory = [];
   explainForHumanTurn();
   render();
 });
