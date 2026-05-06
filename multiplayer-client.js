@@ -8,13 +8,12 @@ function canonicalHandle(name) {
   return handle.length >= 2 ? handle : "";
 }
 
-function normalizePlayerIdentity(player) {
+function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
   const name = String(player?.name || "").trim().slice(0, 32);
   const handle = canonicalHandle(name);
   const id = handle || player?.id || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-  const aliases = new Set(Array.isArray(player?.aliases) ? player.aliases : []);
-  if (player?.id && player.id !== id) aliases.add(player.id);
-  if (name) aliases.add(name);
+  const aliases = new Set(preserveAliases && Array.isArray(player?.aliases) ? player.aliases : []);
+  if (preserveAliases && player?.id && player.id !== id) aliases.add(player.id);
   return {
     id,
     name,
@@ -73,7 +72,7 @@ export class MultiplayerClient {
   }
 
   setName(name) {
-    this.player = normalizePlayerIdentity({ ...this.player, name });
+    this.player = normalizePlayerIdentity({ ...this.player, name }, { preserveAliases: false });
     try {
       localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
     } catch (_err) {}
@@ -201,7 +200,7 @@ export class MultiplayerClient {
     return {
       ok: true,
       players: [
-        { id: "RP", name: "RP", active: true, available: true, seeded: true },
+        { id: "raypalmer", name: "RayPalmer", active: true, available: true, seeded: true },
         { id: "rick", name: "rick", active: true, available: true, seeded: true },
       ],
       incoming,
@@ -246,7 +245,7 @@ export class MultiplayerClient {
       return {
         ok: true,
         players: [
-          { id: "RP", name: "RP", active: true, available: true, seeded: true },
+          { id: "raypalmer", name: "RayPalmer", active: true, available: true, seeded: true },
           { id: "rick", name: "rick", active: true, available: true, seeded: true },
         ],
         message: `Invite sent to ${destination}.`,

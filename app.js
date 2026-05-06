@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
-import { MultiplayerClient } from "./multiplayer-client.js?v=terminate-saves";
+import { MultiplayerClient } from "./multiplayer-client.js?v=rename-handle";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -73,7 +73,7 @@ let selectedPlayerId = "";
 let lastNotifiedChallengeId = "";
 let suspendedGameId = "";
 let knownPlayers = [
-  { id: "RP", name: "RP", active: true, seeded: true },
+  { id: "raypalmer", name: "RayPalmer", active: true, seeded: true },
   { id: "rick", name: "rick", active: true, seeded: true },
 ];
 
@@ -227,9 +227,20 @@ function playerLabel(id) {
   return player?.name || id;
 }
 
-function normalizePlayer(player) {
+function currentPlayerRecord() {
+  const label = multiplayer.label();
+  return {
+    id: multiplayer.player.id,
+    name: label,
+    active: true,
+    available: true,
+    self: true,
+  };
+}
+
+function normalizePlayer(player, { includeSelf = false } = {}) {
   const id = String(player.id || player.name || "").trim();
-  if (!id || id === multiplayer.player.id) return null;
+  if (!id || (!includeSelf && id === multiplayer.player.id)) return null;
   return {
     id,
     name: String(player.name || id).trim(),
@@ -240,10 +251,14 @@ function normalizePlayer(player) {
 }
 
 function mergePlayers(players = []) {
-  const map = new Map(knownPlayers.map(player => [player.id, player]));
+  const self = currentPlayerRecord();
+  const visibleKnownPlayers = knownPlayers.filter(player => player.id !== "RP" && player.name !== "RP");
+  const map = new Map(visibleKnownPlayers.map(player => [player.id, player]));
+  map.set(self.id, { ...(map.get(self.id) || {}), ...self });
   for (const raw of players) {
-    const player = normalizePlayer(raw);
+    const player = normalizePlayer(raw, { includeSelf: true });
     if (!player) continue;
+    if (player.id === "RP" || player.name === "RP") continue;
     map.set(player.id, { ...(map.get(player.id) || {}), ...player });
   }
   knownPlayers = [...map.values()].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
@@ -261,7 +276,7 @@ function renderRoster() {
     button.dataset.playerId = player.id;
     button.disabled = isOnlineGame() || !player.active;
     button.setAttribute("aria-disabled", String(button.disabled));
-    button.innerHTML = `<span>${player.name}</span><strong>${player.active ? "active" : "inactive"}</strong>`;
+    button.innerHTML = `<span>${player.name}</span><strong>${player.self ? "you" : player.active ? "active" : "inactive"}</strong>`;
     button.addEventListener("click", () => {
       if (!player.active) return;
       selectedPlayerId = selectedPlayerId === player.id ? "" : player.id;
@@ -288,6 +303,7 @@ function notifyIncomingChallenge(challenge) {
 function syncOnlineName({ heartbeat = false } = {}) {
   const before = multiplayer.label();
   multiplayer.setName(onlineNameInput.value);
+  mergePlayers([]);
   if (heartbeat || multiplayer.label() !== before) heartbeatOnline();
 }
 
@@ -1193,6 +1209,14 @@ onlineNameInput.addEventListener("change", () => {
   render();
 });
 onlineNameInput.addEventListener("blur", () => syncOnlineName({ heartbeat: true }));
+onlineNameInput.addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    syncOnlineName({ heartbeat: true });
+    onlineNameInput.blur();
+    render();
+  }
+});
 playHumanBtn.addEventListener("click", playHuman);
 acceptChallengeBtn.addEventListener("click", () => answerChallenge(true));
 declineChallengeBtn.addEventListener("click", () => answerChallenge(false));
