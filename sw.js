@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v31-profile-isolation-2";
+const CACHE = "tiberius-phone-v32-invite-fail-clear";
 const ASSETS = [
   "./",
   "index.html",

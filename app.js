@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
-import { MultiplayerClient } from "./multiplayer-client.js?v=profile-isolation-2";
+import { MultiplayerClient } from "./multiplayer-client.js?v=invite-fail-clear";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -809,7 +809,7 @@ function applyRemoteMove(event) {
 
 function handleOnlineResponse(data) {
   if (!data) {
-    onlineNotice = "Relay unavailable; online play needs the multiplayer endpoint to answer.";
+    onlineNotice = "Relay unavailable. Online invites are not being sent right now.";
     render();
     return;
   }
@@ -885,12 +885,12 @@ async function sendChallenge(random, target = "") {
       handleOnlineResponse({ ...data, message: onlineNotice });
       return;
     }
-    inviteOutboxMessage = `Invite queued for ${inviteLabel}. Waiting for relay confirmation.`;
+    inviteOutboxMessage = `Invite to ${inviteLabel} was not sent. Relay unavailable.`;
     onlineNotice = inviteOutboxMessage;
     render();
   } catch (_err) {
     inviteSending = false;
-    inviteOutboxMessage = `Invite queued for ${inviteLabel}. Waiting for relay confirmation.`;
+    inviteOutboxMessage = `Invite to ${inviteLabel} was not sent. Relay unavailable.`;
     onlineNotice = inviteOutboxMessage;
     render();
   }
