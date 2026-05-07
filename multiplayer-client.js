@@ -6,9 +6,9 @@ const ROSTER_KEY = "tiberius-phone-public-roster-v1";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
 const FALLBACK_PLAYERS = [
-  { id: "raypalmer", name: "RayPalmer", active: true, available: true, seeded: true },
-  { id: "rick", name: "rick", active: true, available: true, seeded: true },
-  { id: "queenorma", name: "QueeNorma", active: true, available: true, seeded: true },
+  { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true },
+  { id: "rick", name: "rick", active: false, available: false, seeded: true },
+  { id: "queenorma", name: "QueeNorma", active: false, available: false, seeded: true },
 ];
 
 function canonicalHandle(name) {
@@ -194,7 +194,8 @@ export class MultiplayerClient {
     for (const [id, player] of this.rosterById.entries()) {
       const lastSeen = Number(player.last_seen || 0);
       const seeded = Boolean(player.seeded);
-      const active = seeded || now - lastSeen <= ROSTER_STALE_MS;
+      const self = id === this.player.id || id === this.player.handle;
+      const active = self || now - lastSeen <= ROSTER_STALE_MS;
       const record = { ...player, active, available: active };
       players.push(record);
       if (!seeded && now - lastSeen <= 30 * 60_000) saved[id] = record;
@@ -407,7 +408,7 @@ export class MultiplayerClient {
       this.transport = relayOk && ntfySent ? "DuckDNS + public relay" : relayOk ? this.transport : "public ntfy relay";
       return relayOk ? data : {
         ok: true,
-        players: FALLBACK_PLAYERS,
+        players: this.rosterPlayers(),
         message: `Invite sent to ${destination}.`,
       };
     }
