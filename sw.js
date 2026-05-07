@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v58-relay-timeout-fix";
+const CACHE = "tiberius-phone-v59-preserve-device-handles";
 const ASSETS = [
   "./",
   "index.html",
