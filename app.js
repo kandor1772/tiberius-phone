@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=select-active-players";
+import { MultiplayerClient } from "./multiplayer-client.js?v=publish-handle-invites";
 
-const BUILD_ID = "select-active-players";
+const BUILD_ID = "publish-handle-invites";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
@@ -130,7 +130,7 @@ async function cleanOldAppCaches() {
   try {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v55-${BUILD_ID}`)
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v56-${BUILD_ID}`)
       .map(key => caches.delete(key)));
   } catch (_err) {}
 }
@@ -192,7 +192,7 @@ function setThinking(thinking) {
   playBtn.disabled = thinking || !isHumanTurn();
   moveInput.disabled = playBtn.disabled;
   concedeBtn.disabled = !gameActive || thinking || Boolean(gameResult);
-  playHumanBtn.disabled = thinking || inviteSending || isOnlineGame();
+  playHumanBtn.disabled = thinking || inviteSending || !multiplayer.label();
   returnGameBtn.disabled = !latestReturnableGame();
   acceptChallengeBtn.disabled = !incomingChallenge || !gameActive || Boolean(gameResult);
   declineChallengeBtn.disabled = !incomingChallenge;
@@ -302,7 +302,7 @@ function gameSnapshot() {
 function onlineSummary() {
   const relay = multiplayer.connected ? `Relay connected${multiplayer.transport ? ` (${multiplayer.transport})` : ""}` : "Relay not connected";
   const available = isOnlineGame()
-    ? "busy in a human game; incoming invites can interrupt, outgoing invites are disabled"
+    ? "busy in a human game; sending a new invite will forfeit it first"
     : gameActive && !gameResult ? "available for human invites" : "unavailable until a board is active";
   const handle = multiplayer.player.handle ? ` Handle: ${multiplayer.player.handle}.` : "";
   const opponent = onlineGame ? ` Online game vs ${onlineGame.opponent || "player"}.` : "";
@@ -467,7 +467,10 @@ function syncOnlineName({ heartbeat = false } = {}) {
     }
   }
   mergePlayers([]);
-  if (heartbeat || multiplayer.label() !== before) heartbeatOnline();
+  if (heartbeat || multiplayer.label() !== before) {
+    startFastHeartbeat(120000);
+    heartbeatOnline();
+  }
 }
 
 function scheduleHandleSync() {
@@ -1021,9 +1024,10 @@ async function heartbeatOnline() {
 async function sendChallenge(random, target = "") {
   if (inviteSending) return;
   if (isOnlineGame()) {
-    onlineNotice = "Finish or forfeit the current human game before sending another invite.";
-    render();
-    return;
+    await forfeitCurrentHumanGame("new_outgoing_invite", { returnAfter: false });
+    onlineGame = null;
+    gameResult = "";
+    gameActive = true;
   }
   rememberSuspendedGame();
   const targetName = target ? playerLabel(target) : "";
@@ -1067,9 +1071,7 @@ async function sendChallenge(random, target = "") {
 function playHuman() {
   syncOnlineName();
   if (isOnlineGame()) {
-    onlineNotice = "You are already in a human game. Incoming invites can interrupt it, but outgoing invites are disabled.";
-    render();
-    return;
+    onlineNotice = "Forfeiting current human game before sending a new invite.";
   }
   saveState("human_matchmaking");
   const target = selectedPlayerId;
