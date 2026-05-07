@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=winner-learning";
+import { MultiplayerClient } from "./multiplayer-client.js?v=live-moves";
 
-const BUILD_ID = "winner-learning";
+const BUILD_ID = "live-moves";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 
@@ -839,6 +839,7 @@ function enterOnlineGame(game, role = "relay") {
     inviter_color: "white",
   });
   render();
+  startFastHeartbeat(120000);
 }
 
 function applyRemoteMove(event) {
@@ -920,7 +921,7 @@ async function heartbeatOnline() {
     handleOnlineResponse(data);
   } finally {
     heartbeatInFlight = false;
-    if (Date.now() < fastHeartbeatUntil && !isOnlineGame()) scheduleHeartbeat(1000);
+    if (isOnlineGame() || Date.now() < fastHeartbeatUntil) scheduleHeartbeat(1000);
   }
 }
 
@@ -1122,6 +1123,7 @@ async function afterHumanMove(move) {
   if (isOnlineGame()) {
     onlineNotice = `Sent ${move.san}; waiting for ${onlineGame.opponent}.`;
     await multiplayer.move({ gameId: onlineGame.id, move: { san: move.san, uci: uci(move) }, fen: chess.fen(), pgn: chess.pgn() });
+    startFastHeartbeat(120000);
     if (chess.isGameOver()) {
       finishIfGameOver();
       completeGameLearning();
