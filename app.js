@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=publish-handle-invites";
+import { MultiplayerClient } from "./multiplayer-client.js?v=shared-progress-roster";
 
-const BUILD_ID = "publish-handle-invites";
+const BUILD_ID = "shared-progress-roster";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
@@ -130,7 +130,7 @@ async function cleanOldAppCaches() {
   try {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v56-${BUILD_ID}`)
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v57-${BUILD_ID}`)
       .map(key => caches.delete(key)));
   } catch (_err) {}
 }
@@ -222,6 +222,45 @@ function solutionProgress() {
   const percent = Math.min(99.9, raw * 100);
   const solved = positionCoverage >= 1 && winnerCoverage >= 1 && anchorCoverage >= 1 && agreementRate >= SOLUTION_TARGETS.agreement;
   return { summary, successfulMoves, anchors, checked, agreementRate, percent, solved };
+}
+
+function progressPayload() {
+  const progress = solutionProgress();
+  const meta = phoneMemory.meta || {};
+  return {
+    successful_moves_learned: progress.successfulMoves,
+    stockfish_training_anchors: progress.anchors,
+    stockfish_training_positions: progress.checked,
+    stockfish_agreements: Number(meta.stockfish_agreements || 0),
+    completed_games_evaluated: Number(meta.completed_games_evaluated || 0),
+    exact_positions: progress.summary.positions,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function applySharedProgress(progress = {}) {
+  if (!progress || typeof progress !== "object") return;
+  phoneMemory.meta ||= {};
+  let changed = false;
+  for (const [localKey, remoteKey = localKey] of [
+    ["successful_moves_learned"],
+    ["stockfish_training_anchors"],
+    ["stockfish_training_positions"],
+    ["stockfish_agreements"],
+    ["completed_games_evaluated"],
+  ]) {
+    const local = Number(phoneMemory.meta[localKey] || 0);
+    const remote = Number(progress[remoteKey] || 0);
+    if (remote > local) {
+      phoneMemory.meta[localKey] = remote;
+      changed = true;
+    }
+  }
+  if (progress.updated_at) phoneMemory.meta.shared_progress_updated_at = progress.updated_at;
+  if (changed) {
+    savePhoneMemory();
+    refreshEngineStatus();
+  }
 }
 
 function updateSolutionProgress() {
@@ -977,6 +1016,7 @@ function handleOnlineResponse(data) {
     return;
   }
   if (Array.isArray(data.players)) mergePlayers(data.players);
+  if (data.progress) applySharedProgress(data.progress);
   const incoming = Array.isArray(data.incoming) ? data.incoming
     : Array.isArray(data.invites) ? data.invites
     : Array.isArray(data.invitations) ? data.invitations
@@ -1013,7 +1053,7 @@ async function heartbeatOnline() {
   heartbeatInFlight = true;
   try {
     multiplayer.setName(onlineNameInput.value);
-    const data = await multiplayer.heartbeat(gameSnapshot());
+    const data = await multiplayer.heartbeat({ ...gameSnapshot(), progress: progressPayload() });
     handleOnlineResponse(data);
   } finally {
     heartbeatInFlight = false;

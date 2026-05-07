@@ -175,7 +175,7 @@ export class MultiplayerClient {
 
   async request(path, payload = {}, timeoutMs = 3200) {
     const body = {
-      player: this.player,
+      player: { ...this.player, progress: payload?.progress || null },
       client: "tiberius-phone-github-pages",
       payload,
     };

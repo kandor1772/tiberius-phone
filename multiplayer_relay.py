@@ -38,6 +38,7 @@ class RelayState:
         self.challenges: dict[str, dict] = {}
         self.games: dict[str, dict] = {}
         self.events: dict[str, list[dict]] = {}
+        self.shared_progress: dict[str, object] = {}
 
     def _ids_for(self, player: dict) -> set[str]:
         return normalized_keys(
@@ -170,12 +171,29 @@ class RelayState:
     def heartbeat(self, player: dict) -> dict:
         with self.lock:
             record = self.touch_player(player)
+            progress = player.get("progress") or {}
+            if isinstance(progress, dict):
+                for key in (
+                    "successful_moves_learned",
+                    "stockfish_training_anchors",
+                    "stockfish_training_positions",
+                    "stockfish_agreements",
+                    "completed_games_evaluated",
+                    "exact_positions",
+                ):
+                    current = float(self.shared_progress.get(key) or 0)
+                    incoming = float(progress.get(key) or 0)
+                    if incoming > current:
+                        self.shared_progress[key] = incoming
+                if progress.get("updated_at"):
+                    self.shared_progress["updated_at"] = progress["updated_at"]
             player_events = self.pop_events_for(record)
             return {
                 "ok": True,
                 "players": self.roster(),
                 "incoming": self.incoming_for(record),
                 "events": player_events,
+                "progress": self.shared_progress,
                 "message": "Relay connected.",
             }
 
