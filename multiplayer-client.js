@@ -2,6 +2,9 @@ const PLAYER_KEY = "tiberius-phone-player-v1";
 const NTFY_SEEN_KEY = "tiberius-phone-ntfy-seen-v1";
 const NTFY_BASE = "https://ntfy.sh";
 const NTFY_PREFIX = "tiberius-phone-chess-v1";
+const ROSTER_KEY = "tiberius-phone-public-roster-v1";
+const ROSTER_STALE_MS = 90_000;
+const PRESENCE_INTERVAL_MS = 15_000;
 const FALLBACK_PLAYERS = [
   { id: "raypalmer", name: "RayPalmer", active: true, available: true, seeded: true },
   { id: "rick", name: "rick", active: true, available: true, seeded: true },
@@ -70,6 +73,20 @@ function writeSeen(playerId, seen) {
   } catch (_err) {}
 }
 
+function readRoster() {
+  try {
+    return JSON.parse(localStorage.getItem(ROSTER_KEY)) || {};
+  } catch (_err) {
+    return {};
+  }
+}
+
+function writeRoster(roster) {
+  try {
+    localStorage.setItem(ROSTER_KEY, JSON.stringify(roster));
+  } catch (_err) {}
+}
+
 function stableId() {
   try {
     const saved = JSON.parse(localStorage.getItem(PLAYER_KEY));
@@ -95,6 +112,9 @@ export class MultiplayerClient {
     this.transport = "";
     this.incomingById = new Map();
     this.gamesById = new Map();
+    this.rosterById = new Map(FALLBACK_PLAYERS.map(player => [player.id, player]));
+    for (const player of Object.values(readRoster())) this.rememberRosterPlayer(player);
+    this.lastPresenceAt = 0;
   }
 
   setName(name) {
@@ -102,6 +122,7 @@ export class MultiplayerClient {
     try {
       localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
     } catch (_err) {}
+    this.lastPresenceAt = 0;
   }
 
   label() {
@@ -149,8 +170,45 @@ export class MultiplayerClient {
     }
   }
 
+  rememberRosterPlayer(player) {
+    const id = canonicalHandle(player?.id || player?.name || player?.handle);
+    const name = String(player?.name || player?.handle || id || "").trim().slice(0, 32);
+    if (!id || !name) return;
+    const lastSeen = Number(player.last_seen || Date.now());
+    const active = Date.now() - lastSeen <= ROSTER_STALE_MS;
+    this.rosterById.set(id, {
+      id,
+      name,
+      handle: canonicalHandle(player?.handle || name) || id,
+      active,
+      available: active,
+      last_seen: lastSeen,
+      public_roster: true,
+    });
+  }
+
+  rosterPlayers() {
+    const now = Date.now();
+    const saved = {};
+    const players = [];
+    for (const [id, player] of this.rosterById.entries()) {
+      const lastSeen = Number(player.last_seen || 0);
+      const seeded = Boolean(player.seeded);
+      const active = seeded || now - lastSeen <= ROSTER_STALE_MS;
+      const record = { ...player, active, available: active };
+      players.push(record);
+      if (!seeded && now - lastSeen <= 30 * 60_000) saved[id] = record;
+    }
+    writeRoster(saved);
+    return players;
+  }
+
   topicFor(id) {
     return `${NTFY_PREFIX}-${safeTopicPart(id)}`;
+  }
+
+  rosterTopic() {
+    return `${NTFY_PREFIX}-public-roster`;
   }
 
   topicsForPlayer() {
@@ -162,8 +220,7 @@ export class MultiplayerClient {
     ]).map(id => this.topicFor(id));
   }
 
-  async publishNtfy(target, message) {
-    const topic = this.topicFor(target);
+  async publishTopic(topic, message) {
     const response = await fetch(`${NTFY_BASE}/${topic}`, {
       method: "POST",
       headers: {
@@ -177,7 +234,61 @@ export class MultiplayerClient {
     return response.json().catch(() => ({}));
   }
 
+  async publishNtfy(target, message) {
+    return this.publishTopic(this.topicFor(target), message);
+  }
+
+  async publishPresence(force = false) {
+    const now = Date.now();
+    if (!force && now - this.lastPresenceAt < PRESENCE_INTERVAL_MS) return false;
+    this.lastPresenceAt = now;
+    const handle = this.player.handle || canonicalHandle(this.label());
+    if (!handle) return false;
+    await this.publishTopic(this.rosterTopic(), {
+      kind: "presence",
+      id: handle,
+      name: this.label(),
+      handle,
+      device_id: this.player.device_id,
+      updated_at: now,
+    });
+    this.rememberRosterPlayer({ id: handle, name: this.label(), handle, last_seen: now });
+    return true;
+  }
+
+  async pollRoster() {
+    const response = await fetch(`${NTFY_BASE}/${this.rosterTopic()}/json?poll=1&since=5m`, { cache: "no-store" });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    const text = await response.text();
+    for (const line of text.split(/\n+/)) {
+      if (!line.trim()) continue;
+      let envelope;
+      try {
+        envelope = JSON.parse(line);
+      } catch (_err) {
+        continue;
+      }
+      if (envelope.event !== "message") continue;
+      let message;
+      try {
+        message = JSON.parse(envelope.message || "{}");
+      } catch (_err) {
+        continue;
+      }
+      if (message.kind !== "presence") continue;
+      this.rememberRosterPlayer({
+        id: message.id || message.handle || message.name,
+        name: message.name || message.handle || message.id,
+        handle: message.handle || message.id,
+        last_seen: Number(message.updated_at || envelope.time * 1000 || Date.now()),
+      });
+    }
+    return this.rosterPlayers();
+  }
+
   async pollNtfy() {
+    await this.publishPresence().catch(() => {});
+    const roster = await this.pollRoster().catch(() => this.rosterPlayers());
     const seen = readSeen(this.player.id);
     const incoming = [];
     const events = [];
@@ -233,7 +344,7 @@ export class MultiplayerClient {
     this.lastError = "";
     return {
       ok: true,
-      players: FALLBACK_PLAYERS,
+      players: roster,
       incoming,
       events,
       message: "Relay connected.",
