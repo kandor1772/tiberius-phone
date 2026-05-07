@@ -461,6 +461,11 @@ export class MultiplayerClient {
   async respond({ challengeId, accept }) {
     const challenge = this.incomingById.get(challengeId);
     const data = await this.request("/challenge/respond", { challengeId, accept }, 1200);
+    if (data?.ok && accept && data.game) {
+      this.gamesById.set(data.game.id, data.game);
+      this.incomingById.delete(challengeId);
+      return data;
+    }
     if (data && (!accept || !challenge)) return data;
     if (!challenge) return null;
     if (!accept) {

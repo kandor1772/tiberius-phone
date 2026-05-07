@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=self-raypalmer";
+import { MultiplayerClient } from "./multiplayer-client.js?v=invite-homescreen";
 
-const BUILD_ID = "self-raypalmer";
+const BUILD_ID = "invite-homescreen";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "RayPalmer";
@@ -129,7 +129,7 @@ async function cleanOldAppCaches() {
   try {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v51-${BUILD_ID}`)
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v52-${BUILD_ID}`)
       .map(key => caches.delete(key)));
   } catch (_err) {}
 }
@@ -947,6 +947,11 @@ function startFastHeartbeat(durationMs = 30000) {
   scheduleHeartbeat(250);
 }
 
+function wakeOnlineRelay() {
+  startFastHeartbeat(45000);
+  heartbeatOnline();
+}
+
 function handleOnlineResponse(data) {
   if (!data) {
     onlineNotice = "Relay unavailable. Online invites are not being sent right now.";
@@ -1508,6 +1513,12 @@ moveInput.addEventListener("keydown", event => {
     event.preventDefault();
     submitMove();
   }
+});
+window.addEventListener("focus", wakeOnlineRelay);
+window.addEventListener("online", wakeOnlineRelay);
+window.addEventListener("pageshow", wakeOnlineRelay);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") wakeOnlineRelay();
 });
 
 canonicalizeBuildUrl();
