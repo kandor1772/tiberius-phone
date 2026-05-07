@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=active-self-fix";
+import { MultiplayerClient } from "./multiplayer-client.js?v=invite-known";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -136,8 +136,7 @@ function setThinking(thinking) {
   playBtn.disabled = thinking || !isHumanTurn();
   moveInput.disabled = playBtn.disabled;
   concedeBtn.disabled = !gameActive || thinking || Boolean(gameResult);
-  const selectedPlayer = selectedPlayerId ? knownPlayers.find(player => player.id === selectedPlayerId) : null;
-  playHumanBtn.disabled = thinking || inviteSending || isOnlineGame() || Boolean(selectedPlayer && !selectedPlayer.active);
+  playHumanBtn.disabled = thinking || inviteSending || isOnlineGame();
   returnGameBtn.disabled = !latestReturnableGame();
   acceptChallengeBtn.disabled = !incomingChallenge || !gameActive || Boolean(gameResult);
   declineChallengeBtn.disabled = !incomingChallenge;
@@ -224,8 +223,8 @@ function onlineSummary() {
   const opponent = onlineGame ? ` Online game vs ${onlineGame.opponent || "player"}.` : "";
   const selectedPlayer = selectedPlayerId ? knownPlayers.find(player => player.id === selectedPlayerId) : null;
   const selected = selectedPlayer
-    ? ` Selected ${selectedPlayer.name} (${selectedPlayer.active ? "active" : "inactive"}).`
-    : " No player selected: Play Human will look for random active players.";
+    ? ` Selected ${selectedPlayer.name}${selectedPlayer.active ? " (active)" : ""}.`
+    : " No player selected: Play Human will look for a random player.";
   const notice = onlineNotice ? ` ${onlineNotice}` : "";
   onlineStatusEl.textContent = `${relay}. ${multiplayer.label()} is ${available}.${handle}${opponent}${selected}${notice}`;
   incomingChallengeEl.classList.toggle("hidden", !incomingChallenge);
@@ -307,11 +306,11 @@ function renderRoster() {
     button.className = `player-row ${player.active ? "active" : "inactive"}`;
     if (player.id === selectedPlayerId) button.classList.add("selected-player");
     button.dataset.playerId = player.id;
-    button.disabled = isOnlineGame() || !player.active;
+    button.disabled = isOnlineGame() || player.self;
     button.setAttribute("aria-disabled", String(button.disabled));
-    button.innerHTML = `<span>${player.name}</span><strong>${player.self ? "you" : player.active ? "active" : "inactive"}</strong>`;
+    button.innerHTML = `<span>${player.name}</span><strong>${player.self ? "you" : player.active ? "active" : "known"}</strong>`;
     button.addEventListener("click", () => {
-      if (!player.active) return;
+      if (player.self) return;
       selectedPlayerId = selectedPlayerId === player.id ? "" : player.id;
       render();
     });
@@ -938,12 +937,6 @@ function playHuman() {
   }
   saveState("human_matchmaking");
   const target = selectedPlayerId;
-  const selectedPlayer = target ? knownPlayers.find(player => player.id === target) : null;
-  if (selectedPlayer && !selectedPlayer.active) {
-    onlineNotice = `${selectedPlayer.name} is inactive; invites are only available for active players.`;
-    render();
-    return;
-  }
   sendChallenge(!target, target);
 }
 
