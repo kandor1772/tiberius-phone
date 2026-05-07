@@ -1,11 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=identity-fix";
+import { MultiplayerClient } from "./multiplayer-client.js?v=identity-repair";
 
-const BUILD_ID = "identity-fix";
+const BUILD_ID = "identity-repair";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
+const DEFAULT_PLAYER_NAME = "RayPalmer";
 const SOLUTION_TARGETS = {
   successfulMoves: 100000,
   exactPositions: 50000,
@@ -1376,7 +1377,10 @@ async function loadMemoryPhase(manifest, phase) {
 }
 
 async function boot() {
+  multiplayer.repairIdentity(DEFAULT_PLAYER_NAME);
   onlineNameInput.value = multiplayer.player.name || "";
+  if (!onlineNameInput.value) onlineNameInput.value = DEFAULT_PLAYER_NAME;
+  multiplayer.setName(onlineNameInput.value);
   mergePlayers([]);
   render();
   loadPhoneMemory();

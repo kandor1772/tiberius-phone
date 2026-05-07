@@ -134,6 +134,19 @@ export class MultiplayerClient {
     return this.player.name || this.player.id;
   }
 
+  repairIdentity(defaultName = DEFAULT_PLAYER_NAME) {
+    const id = String(this.player?.id || "");
+    const name = String(this.player?.name || "").trim();
+    if (name && !id.startsWith("anon-")) return false;
+    const aliases = [...(this.player.aliases || []), id].filter(Boolean);
+    this.player = normalizePlayerIdentity({ ...this.player, name: defaultName, aliases });
+    try {
+      localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
+    } catch (_err) {}
+    this.lastPresenceAt = 0;
+    return true;
+  }
+
   async request(path, payload = {}, timeoutMs = 3200) {
     const body = {
       player: this.player,
