@@ -1,10 +1,11 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=self-clean";
+import { MultiplayerClient } from "./multiplayer-client.js?v=winner-learning";
 
-const BUILD_ID = "self-clean";
+const BUILD_ID = "winner-learning";
 const CACHE_PREFIX = "tiberius-phone-";
+const LEARNING_POLICY = "winner-only-v1";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -58,7 +59,7 @@ let stockfishReady = false;
 let stockfishBootPromise = null;
 let engineThinking = false;
 let sourceMemories = [];
-let phoneMemory = emptyMemory({ source: "phone-local" });
+let phoneMemory = makePhoneMemory();
 let loadedMemorySources = [];
 let failedMemorySources = [];
 let trajectory = [];
@@ -122,6 +123,14 @@ function profileScope() {
 
 function scopedKey(base) {
   return `${base}:${profileScope()}`;
+}
+
+function makePhoneMemory() {
+  return emptyMemory({
+    source: "phone-local",
+    source_label: "Phone local learning",
+    learning_policy: LEARNING_POLICY,
+  });
 }
 
 function uci(move) {
@@ -366,7 +375,7 @@ function syncOnlineName({ heartbeat = false } = {}) {
   const beforeScope = profileScope();
   multiplayer.setName(onlineNameInput.value);
   if (profileScope() !== beforeScope) {
-    phoneMemory = emptyMemory({ source: "phone-local" });
+    phoneMemory = makePhoneMemory();
     loadPhoneMemory();
     rebuildOverlay();
     currentGameId = "";
@@ -464,20 +473,13 @@ function rememberMove(beforeFen, move) {
 
 function learnObservedHumanMove(beforeFen, move, actor = "human") {
   if (!isOnlineGame()) return;
-  learnMemory(phoneMemory, new Chess(beforeFen), move, "d");
-  phoneMemory.meta ||= {};
-  phoneMemory.meta.human_observed_moves = Number(phoneMemory.meta.human_observed_moves || 0) + 1;
-  phoneMemory.meta.last_human_observation = new Date().toISOString();
-  savePhoneMemory();
-  rebuildOverlay();
-  refreshEngineStatus();
   queueSync("human_move_observed", {
     game_id: onlineGame.id,
     opponent: onlineGame.opponent,
     actor,
     san: move.san,
     uci: uci(move),
-    learned_bucket: "d",
+    learned_bucket: "pending_result",
     before_fen: beforeFen,
   });
 }
@@ -488,10 +490,10 @@ function whiteScore() {
   return 0.5;
 }
 
-function bucketForPosition(fen, finalWhiteScore) {
-  const side = fen.split(" ")[1];
-  const score = side === "w" ? finalWhiteScore : finalWhiteScore === 0.5 ? 0.5 : 1 - finalWhiteScore;
-  return score > 0.66 ? "w" : score >= 0.34 ? "d" : "l";
+function winningSide(finalWhiteScore) {
+  if (finalWhiteScore === 1) return "w";
+  if (finalWhiteScore === 0) return "b";
+  return "";
 }
 
 function rebuildOverlay() {
@@ -1023,9 +1025,19 @@ function finishIfGameOver() {
 function completeGameLearning(force = false) {
   if (!trajectory.length || (!force && !chess.isGameOver() && !gameResult)) return;
   const score = gameResult === "1-0" ? 1 : gameResult === "0-1" ? 0 : whiteScore();
+  const winner = winningSide(score);
+  let learned = 0;
   for (const item of trajectory) {
-    learnMemory(phoneMemory, new Chess(item.fen), item.move, bucketForPosition(item.fen, score));
+    const mover = item.fen.split(" ")[1];
+    if (mover !== winner) continue;
+    learnMemory(phoneMemory, new Chess(item.fen), item.move, "w");
+    learned += 1;
   }
+  phoneMemory.meta ||= {};
+  phoneMemory.meta.learning_policy = LEARNING_POLICY;
+  phoneMemory.meta.successful_moves_learned = Number(phoneMemory.meta.successful_moves_learned || 0) + learned;
+  phoneMemory.meta.completed_games_evaluated = Number(phoneMemory.meta.completed_games_evaluated || 0) + 1;
+  phoneMemory.meta.last_learning_result = gameResult || (score === 1 ? "1-0" : score === 0 ? "0-1" : "1/2-1/2");
   trajectory = [];
   savePhoneMemory();
   rebuildOverlay();
@@ -1238,10 +1250,16 @@ function loadPhoneMemory() {
   try {
     phoneMemory = JSON.parse(localStorage.getItem(scopedKey(PHONE_MEMORY_KEY))) || phoneMemory;
   } catch (_err) {
-    phoneMemory = emptyMemory({ source: "phone-local" });
+    phoneMemory = makePhoneMemory();
   }
   phoneMemory.meta ||= {};
+  if (phoneMemory.meta.learning_policy !== LEARNING_POLICY) {
+    phoneMemory = makePhoneMemory();
+    phoneMemory.meta.reset_reason = "Rebuilt local memory for winner-only learning.";
+    savePhoneMemory();
+  }
   phoneMemory.meta.source_label = "Phone local learning";
+  phoneMemory.meta.learning_policy = LEARNING_POLICY;
 }
 
 async function loadMemoryPhase(manifest, phase) {
