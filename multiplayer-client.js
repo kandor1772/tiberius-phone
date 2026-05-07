@@ -404,64 +404,23 @@ export class MultiplayerClient {
   }
 
   async heartbeat(state) {
-    const [relayResult, ntfyResult] = await Promise.allSettled([
-      this.request("/heartbeat", state, RELAY_TIMEOUT_MS),
-      this.pollNtfy(),
-    ]);
-    const relayData = relayResult.status === "fulfilled" ? relayResult.value : null;
-    const ntfyData = ntfyResult.status === "fulfilled" ? ntfyResult.value : null;
-    const data = relayData || ntfyData;
-    if (data) {
-      const merged = {
-        ...data,
-        players: mergeLists(relayData?.players, ntfyData?.players),
-        incoming: mergeLists(relayData?.incoming, ntfyData?.incoming),
-        events: mergeLists(relayData?.events, ntfyData?.events),
-        message: relayData && ntfyData ? "Relay connected." : data.message,
-      };
-      this.rememberIncoming(merged);
+    const data = await this.request("/heartbeat", state, RELAY_TIMEOUT_MS);
+    if (data?.ok) {
+      this.rememberIncoming(data);
       this.connected = true;
-      this.transport = relayData && ntfyData ? "DuckDNS + public relay" : this.transport;
-      return merged;
+      return data;
     }
-    try {
-      return await this.pollNtfy();
-    } catch (error) {
-      this.connected = false;
-      this.transport = "";
-      this.lastError = error?.message || "relay unavailable";
-      return null;
-    }
+    this.connected = false;
+    this.transport = "";
+    return null;
   }
 
   async challenge({ target = "", targetName = "", random = false, inviterColor = "w", game }) {
     const payload = { target, targetName, targetHandle: targetName || target, random, inviterColor, game };
-    const destination = targetName || target;
-    const challengeId = `ntfy-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const relayPromise = this.request("/challenge", payload, RELAY_TIMEOUT_MS);
-    const ntfyPromise = destination ? this.publishNtfy(destination, {
-      kind: "challenge",
-      id: challengeId,
-      from: this.player.id,
-      from_name: this.label(),
-      from_device: this.player.device_id,
-      target: destination,
-      target_name: destination,
-      inviter_color: "w",
-      created_at: new Date().toISOString(),
-    }).then(() => true).catch(() => false) : Promise.resolve(false);
-    const [relayResult, ntfyResult] = await Promise.allSettled([relayPromise, ntfyPromise]);
-    const data = relayResult.status === "fulfilled" ? relayResult.value : null;
-    const relayOk = data && data.ok !== false;
-    const ntfySent = ntfyResult.status === "fulfilled" && ntfyResult.value;
-    if (relayOk || ntfySent) {
+    const data = await this.request("/challenge", payload, RELAY_TIMEOUT_MS);
+    if (data?.ok) {
       this.connected = true;
-      this.transport = relayOk && ntfySent ? "DuckDNS + public relay" : relayOk ? this.transport : "public ntfy relay";
-      return relayOk ? data : {
-        ok: true,
-        players: this.rosterPlayers(),
-        message: `Invite sent to ${destination}.`,
-      };
+      return data;
     }
     this.connected = false;
     return data || null;
@@ -480,64 +439,16 @@ export class MultiplayerClient {
       return data;
     }
     if (data && (!accept || !challenge)) return data;
-    if (!challenge) return null;
-    if (!accept) {
-      this.incomingById.delete(challengeId);
-      return { ok: true, message: "Invite declined." };
-    }
-    const gameId = `ntfy-game-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const accepterGame = {
-      id: gameId,
-      inviter_id: challenge.from,
-      accepter_id: this.player.id,
-      opponent: challenge.from_name || challenge.from,
-      opponent_name: challenge.from_name || challenge.from,
-      opponent_id: challenge.from,
-      color: "b",
-    };
-    const inviterGame = {
-      ...accepterGame,
-      opponent: this.label(),
-      opponent_name: this.label(),
-      opponent_id: this.player.id,
-      color: "w",
-    };
-    try {
-      await this.publishNtfy(challenge.from, { kind: "game_start", from_device: this.player.device_id, game: inviterGame });
-      this.gamesById.set(gameId, accepterGame);
-      this.incomingById.delete(challengeId);
-      this.connected = true;
-      this.transport = data ? "DuckDNS + public relay" : "public ntfy relay";
-      return data || { ok: true, game: accepterGame, message: "Invite accepted." };
-    } catch (error) {
-      if (data) return data;
-      this.lastError = error?.message || "relay unavailable";
-      return null;
-    }
+    return data || null;
   }
 
   async move({ gameId, move, fen, pgn }) {
     const data = await this.request("/game/move", { gameId, move, fen, pgn }, RELAY_TIMEOUT_MS);
-    if (data) return data;
-    const game = this.gamesById.get(gameId);
-    if (!game?.opponent_id) return null;
-    try {
-      await this.publishNtfy(game.opponent_id, { kind: "move", from_device: this.player.device_id, game_id: gameId, move, fen, pgn });
-      this.connected = true;
-      this.transport = "public ntfy relay";
-      return { ok: true, message: "Move relayed." };
-    } catch (_err) {
-      return null;
-    }
+    return data || null;
   }
 
   async forfeit({ gameId, reason = "interrupted" }) {
     const data = await this.request("/game/forfeit", { gameId, reason }, RELAY_TIMEOUT_MS);
-    if (data) return data;
-    const game = this.gamesById.get(gameId);
-    if (game?.opponent_id) {
-      await this.publishNtfy(game.opponent_id, { kind: "forfeit", from_device: this.player.device_id, game_id: gameId, from: this.player.id, reason }).catch(() => {});
-    }
-    return { ok: true, message: "Forfeit relayed." };
+    return data || null;
   }
 }
