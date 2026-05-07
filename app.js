@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=invite-homescreen";
+import { MultiplayerClient } from "./multiplayer-client.js?v=handle-is-device";
 
-const BUILD_ID = "invite-homescreen";
+const BUILD_ID = "handle-is-device";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
-const DEFAULT_PLAYER_NAME = "RayPalmer";
+const DEFAULT_PLAYER_NAME = "";
 const SOLUTION_TARGETS = {
   successfulMoves: 100000,
   exactPositions: 50000,
@@ -129,13 +129,13 @@ async function cleanOldAppCaches() {
   try {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v52-${BUILD_ID}`)
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v53-${BUILD_ID}`)
       .map(key => caches.delete(key)));
   } catch (_err) {}
 }
 
 function profileScope() {
-  return `${multiplayer.player.id}:${multiplayer.player.device_id || "device"}`;
+  return `${multiplayer.player.handle || multiplayer.player.id}:${multiplayer.player.device_id || "device"}`;
 }
 
 function scopedKey(base) {
@@ -148,6 +148,13 @@ function makePhoneMemory() {
     source_label: "Phone local learning",
     learning_policy: LEARNING_POLICY,
   });
+}
+
+function localLearningCount(memory = phoneMemory) {
+  const meta = memory?.meta || {};
+  return Number(meta.successful_moves_learned || 0)
+    + Number(meta.stockfish_training_anchors || 0)
+    + Number(meta.completed_games_evaluated || 0);
 }
 
 function uci(move) {
@@ -320,11 +327,10 @@ function playerLabel(id) {
 }
 
 function currentPlayerRecord() {
-  multiplayer.repairIdentity(DEFAULT_PLAYER_NAME);
   const label = multiplayer.label();
   return {
     id: multiplayer.player.id,
-    name: label,
+    name: label || "Enter handle",
     active: true,
     available: true,
     self: true,
@@ -1403,11 +1409,17 @@ async function loadMemoryPhase(manifest, phase) {
 async function boot() {
   multiplayer.repairIdentity(DEFAULT_PLAYER_NAME);
   onlineNameInput.value = multiplayer.player.name || "";
-  if (!onlineNameInput.value) onlineNameInput.value = DEFAULT_PLAYER_NAME;
-  multiplayer.setName(onlineNameInput.value);
   mergePlayers([]);
   render();
   loadPhoneMemory();
+  if (identityKey(multiplayer.label()) === "raypalmer" && localLearningCount(phoneMemory) === 0) {
+    multiplayer.clearIdentity();
+    phoneMemory = makePhoneMemory();
+    onlineNameInput.value = "";
+    mergePlayers([]);
+  } else if (onlineNameInput.value) {
+    multiplayer.setName(onlineNameInput.value);
+  }
   const restored = loadSavedState();
   if (!restored) {
     humanColor = "b";

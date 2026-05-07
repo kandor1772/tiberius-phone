@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v52-invite-homescreen";
+const CACHE = "tiberius-phone-v53-handle-is-device";
 const ASSETS = [
   "./",
   "index.html",

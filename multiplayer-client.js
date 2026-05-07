@@ -5,7 +5,7 @@ const NTFY_PREFIX = "tiberius-phone-chess-v1";
 const ROSTER_KEY = "tiberius-phone-public-roster-v1";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
-const DEFAULT_PLAYER_NAME = "RayPalmer";
+const DEFAULT_PLAYER_NAME = "";
 const FALLBACK_PLAYERS = [
   { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true },
   { id: "rick", name: "rick", active: false, available: false, seeded: true },
@@ -32,14 +32,12 @@ function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
   let name = rawName && !isAnonIdentity(rawName)
     ? rawName
     : isAnonIdentity(savedId) ? DEFAULT_PLAYER_NAME : savedId || DEFAULT_PLAYER_NAME;
-  if (identityKey(name) === identityKey(DEFAULT_PLAYER_NAME) || identityKey(savedId) === identityKey(DEFAULT_PLAYER_NAME)) {
-    name = DEFAULT_PLAYER_NAME;
-  }
   const handle = canonicalHandle(name);
-  const id = handle || player?.id || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const baseId = isAnonIdentity(player?.id) ? "" : player?.id;
+  const id = handle || baseId || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const deviceId = player?.device_id || player?.deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const aliases = new Set(preserveAliases && Array.isArray(player?.aliases) ? player.aliases : []);
-  if (preserveAliases && player?.id && player.id !== id) aliases.add(player.id);
+  if (preserveAliases && player?.id && !isAnonIdentity(player.id) && player.id !== id) aliases.add(player.id);
   return {
     id,
     name,
@@ -108,12 +106,12 @@ function stableId() {
   try {
     const saved = JSON.parse(localStorage.getItem(PLAYER_KEY));
     if (saved?.id) {
-      const normalized = normalizePlayerIdentity(isAnonIdentity(saved?.id) || isAnonIdentity(saved?.name) ? { ...saved, name: DEFAULT_PLAYER_NAME } : saved);
+      const normalized = normalizePlayerIdentity(isAnonIdentity(saved?.id) || isAnonIdentity(saved?.name) ? { ...saved, name: "" } : saved);
       localStorage.setItem(PLAYER_KEY, JSON.stringify(normalized));
       return normalized;
     }
   } catch (_err) {}
-  const player = normalizePlayerIdentity({ name: DEFAULT_PLAYER_NAME });
+  const player = normalizePlayerIdentity({ name: "" });
   try {
     localStorage.setItem(PLAYER_KEY, JSON.stringify(player));
   } catch (_err) {}
@@ -145,7 +143,7 @@ export class MultiplayerClient {
   }
 
   label() {
-    return this.player.name || this.player.id;
+    return this.player.name || "";
   }
 
   repairIdentity(defaultName = DEFAULT_PLAYER_NAME) {
@@ -159,6 +157,20 @@ export class MultiplayerClient {
     } catch (_err) {}
     this.lastPresenceAt = 0;
     return true;
+  }
+
+  clearIdentity() {
+    this.player = normalizePlayerIdentity({
+      id: "",
+      name: "",
+      handle: "",
+      device_id: this.player.device_id,
+      aliases: [],
+    });
+    try {
+      localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
+    } catch (_err) {}
+    this.lastPresenceAt = 0;
   }
 
   async request(path, payload = {}, timeoutMs = 3200) {
@@ -206,7 +218,7 @@ export class MultiplayerClient {
     if (isAnonIdentity(player?.id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) return;
     let id = canonicalHandle(player?.id || player?.name || player?.handle);
     let name = String(player?.name || player?.handle || id || "").trim().slice(0, 32);
-    if ([id, name, player?.handle].some(value => identityKey(value) === identityKey(DEFAULT_PLAYER_NAME))) {
+    if (DEFAULT_PLAYER_NAME && [id, name, player?.handle].some(value => identityKey(value) === identityKey(DEFAULT_PLAYER_NAME))) {
       id = canonicalHandle(DEFAULT_PLAYER_NAME);
       name = DEFAULT_PLAYER_NAME;
     }
