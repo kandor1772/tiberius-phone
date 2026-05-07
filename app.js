@@ -1,7 +1,10 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=live-accept";
+import { MultiplayerClient } from "./multiplayer-client.js?v=self-clean";
+
+const BUILD_ID = "self-clean";
+const CACHE_PREFIX = "tiberius-phone-";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -93,12 +96,25 @@ const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 const MULTIPLAYER_ENDPOINTS = [
   "https://cars-reduced-list-contests.trycloudflare.com",
   "https://eltiburon.duckdns.org/api/multiplayer",
-  "http://192.168.1.25:8776",
-  "http://Kenneths-MacBook-Air.local:8776",
-  "http://127.0.0.1:8776/api/multiplayer",
-  "http://localhost:8776/api/multiplayer",
 ];
 const multiplayer = new MultiplayerClient({ endpoints: MULTIPLAYER_ENDPOINTS });
+
+function canonicalizeBuildUrl() {
+  const url = new URL(window.location.href);
+  if (url.searchParams.get("v") === BUILD_ID) return;
+  url.searchParams.set("v", BUILD_ID);
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+async function cleanOldAppCaches() {
+  if (!("caches" in window)) return;
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v44-${BUILD_ID}`)
+      .map(key => caches.delete(key)));
+  } catch (_err) {}
+}
 
 function profileScope() {
   return `${multiplayer.player.id}:${multiplayer.player.device_id || "device"}`;
@@ -1355,8 +1371,19 @@ moveInput.addEventListener("keydown", event => {
   }
 });
 
+canonicalizeBuildUrl();
+cleanOldAppCaches();
+
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+  let refreshingForUpdate = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (refreshingForUpdate) return;
+    refreshingForUpdate = true;
+    window.location.reload();
+  });
+  navigator.serviceWorker.register(`sw.js?v=${BUILD_ID}`).then(registration => {
+    registration.update().catch(() => {});
+  }).catch(() => {});
 }
 
 boot();

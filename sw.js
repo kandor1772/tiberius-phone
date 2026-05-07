@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v43-live-accept";
+const CACHE = "tiberius-phone-v44-self-clean";
 const ASSETS = [
   "./",
   "index.html",
@@ -28,7 +28,9 @@ self.addEventListener("install", event => {
 
 self.addEventListener("activate", event => {
   event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key))))
+    caches.keys().then(keys => Promise.all(keys
+      .filter(key => key.startsWith("tiberius-phone-") && key !== CACHE)
+      .map(key => caches.delete(key))))
   );
   self.clients.claim();
 });
