@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v53-handle-is-device";
+const CACHE = "tiberius-phone-v54-handle-live-device";
 const ASSETS = [
   "./",
   "index.html",

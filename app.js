@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=handle-is-device";
+import { MultiplayerClient } from "./multiplayer-client.js?v=handle-live-device";
 
-const BUILD_ID = "handle-is-device";
+const BUILD_ID = "handle-live-device";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
@@ -97,6 +97,7 @@ let inviteOutboxMessage = "";
 let heartbeatInFlight = false;
 let fastHeartbeatUntil = 0;
 let heartbeatTimer = null;
+let handleSyncTimer = null;
 let trainerTimer = null;
 let trainerLine = new Chess();
 let knownPlayers = [
@@ -129,7 +130,7 @@ async function cleanOldAppCaches() {
   try {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v53-${BUILD_ID}`)
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v54-${BUILD_ID}`)
       .map(key => caches.delete(key)));
   } catch (_err) {}
 }
@@ -467,6 +468,14 @@ function syncOnlineName({ heartbeat = false } = {}) {
   }
   mergePlayers([]);
   if (heartbeat || multiplayer.label() !== before) heartbeatOnline();
+}
+
+function scheduleHandleSync() {
+  window.clearTimeout(handleSyncTimer);
+  handleSyncTimer = window.setTimeout(() => {
+    syncOnlineName({ heartbeat: true });
+    render();
+  }, 350);
 }
 
 function render() {
@@ -1506,6 +1515,7 @@ onlineNameInput.addEventListener("change", () => {
   syncOnlineName({ heartbeat: true });
   render();
 });
+onlineNameInput.addEventListener("input", scheduleHandleSync);
 onlineNameInput.addEventListener("blur", () => syncOnlineName({ heartbeat: true }));
 onlineNameInput.addEventListener("keydown", event => {
   if (event.key === "Enter") {

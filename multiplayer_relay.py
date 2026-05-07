@@ -44,14 +44,13 @@ class RelayState:
             player.get("id"),
             player.get("name"),
             player.get("handle"),
-            player.get("device_id") or player.get("deviceId"),
         )
 
     def _device_id_for(self, player: dict) -> str:
         return str(player.get("device_id") or player.get("deviceId") or "").strip()
 
     def _keys_for_record(self, record: dict) -> set[str]:
-        return normalized_keys(record.get("id"), record.get("name"), record.get("handle"), record.get("device_id"))
+        return normalized_keys(record.get("id"), record.get("name"), record.get("handle"))
 
     def _unindex_record(self, record: dict) -> None:
         for key, value in list(self.players.items()):
@@ -100,9 +99,9 @@ class RelayState:
             player_id = f"anon-{device_id}" if device_id else ""
         name = str(player.get("name") or player_id).strip()
         handle = str(player.get("handle") or name).strip()
-        existing = self.players.get(device_id) if device_id else None
-        if not existing:
-            existing = next((self.players[item] for item in normalized_keys(player_id, handle) if item in self.players), None)
+        existing = next((self.players[item] for item in normalized_keys(player_id, handle) if item in self.players), None)
+        if existing and device_id and existing.get("device_id") != device_id and normalized_keys(existing.get("id"), existing.get("handle")).isdisjoint(normalized_keys(player_id, handle)):
+            existing = None
         record = existing or {}
         if record:
             self._unindex_record(record)

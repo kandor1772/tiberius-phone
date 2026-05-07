@@ -13,7 +13,7 @@ const FALLBACK_PLAYERS = [
 ];
 
 function canonicalHandle(name) {
-  const handle = safeTopicPart(name).replace(/^-+|-+$/g, "").slice(0, 32);
+  const handle = safeTopicPart(name).replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
   return handle.length >= 2 ? handle : "";
 }
 
