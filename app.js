@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=dual-invites";
+import { MultiplayerClient } from "./multiplayer-client.js?v=queenorma-roster";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -78,6 +78,7 @@ let inviteOutboxMessage = "";
 let knownPlayers = [
   { id: "raypalmer", name: "RayPalmer", active: true, seeded: true },
   { id: "rick", name: "rick", active: true, seeded: true },
+  { id: "queenorma", name: "QueeNorma", active: true, seeded: true },
 ];
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";

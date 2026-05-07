@@ -2,6 +2,11 @@ const PLAYER_KEY = "tiberius-phone-player-v1";
 const NTFY_SEEN_KEY = "tiberius-phone-ntfy-seen-v1";
 const NTFY_BASE = "https://ntfy.sh";
 const NTFY_PREFIX = "tiberius-phone-chess-v1";
+const FALLBACK_PLAYERS = [
+  { id: "raypalmer", name: "RayPalmer", active: true, available: true, seeded: true },
+  { id: "rick", name: "rick", active: true, available: true, seeded: true },
+  { id: "queenorma", name: "QueeNorma", active: true, available: true, seeded: true },
+];
 
 function canonicalHandle(name) {
   const handle = safeTopicPart(name).replace(/^-+|-+$/g, "").slice(0, 32);
@@ -228,10 +233,7 @@ export class MultiplayerClient {
     this.lastError = "";
     return {
       ok: true,
-      players: [
-        { id: "raypalmer", name: "RayPalmer", active: true, available: true, seeded: true },
-        { id: "rick", name: "rick", active: true, available: true, seeded: true },
-      ],
+      players: FALLBACK_PLAYERS,
       incoming,
       events,
       message: "Relay connected.",
@@ -294,10 +296,7 @@ export class MultiplayerClient {
       this.transport = relayOk && ntfySent ? "DuckDNS + public relay" : relayOk ? this.transport : "public ntfy relay";
       return relayOk ? data : {
         ok: true,
-        players: [
-          { id: "raypalmer", name: "RayPalmer", active: true, available: true, seeded: true },
-          { id: "rick", name: "rick", active: true, available: true, seeded: true },
-        ],
+        players: FALLBACK_PLAYERS,
         message: `Invite sent to ${destination}.`,
       };
     }
