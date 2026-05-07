@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=handle-live-device";
+import { MultiplayerClient } from "./multiplayer-client.js?v=select-active-players";
 
-const BUILD_ID = "handle-live-device";
+const BUILD_ID = "select-active-players";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
@@ -130,7 +130,7 @@ async function cleanOldAppCaches() {
   try {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v54-${BUILD_ID}`)
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v55-${BUILD_ID}`)
       .map(key => caches.delete(key)));
   } catch (_err) {}
 }
@@ -407,7 +407,7 @@ function renderRoster() {
     button.className = `player-row ${player.active ? "active" : "inactive"}`;
     if (player.id === selectedPlayerId) button.classList.add("selected-player");
     button.dataset.playerId = player.id;
-    button.disabled = isOnlineGame() || player.self;
+    button.disabled = player.self || !player.active;
     button.setAttribute("aria-disabled", String(button.disabled));
     button.innerHTML = `<span>${player.name}</span><strong>${player.self ? "you" : player.active ? "active" : "known"}</strong>`;
     button.addEventListener("click", () => {
