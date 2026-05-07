@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 
 STALE_AFTER_SECONDS = 90
 TEST_PROFILE_PREFIXES = (
-    "anon-", "cf-test", "lan-test", "local-", "public-", "ray-test", "ray-lan",
+    "anon", "cf-test", "lan-test", "local-", "public-", "ray-test", "ray-lan",
     "ray-cf", "ray-clean", "ray-move", "ray-win", "norma-test", "norma-lan",
     "norma-cf", "norma-clean", "norma-move", "norma-win", "codex-smoke",
 )

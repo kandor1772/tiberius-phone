@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v49-identity-repair";
+const CACHE = "tiberius-phone-v50-identity-clean";
 const ASSETS = [
   "./",
   "index.html",
