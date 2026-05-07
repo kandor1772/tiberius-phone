@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=tunnel-relay";
+import { MultiplayerClient } from "./multiplayer-client.js?v=live-accept";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -75,6 +75,9 @@ let lastNotifiedChallengeId = "";
 let suspendedGameId = "";
 let inviteSending = false;
 let inviteOutboxMessage = "";
+let heartbeatInFlight = false;
+let fastHeartbeatUntil = 0;
+let heartbeatTimer = null;
 let knownPlayers = [
   { id: "raypalmer", name: "RayPalmer", active: false, seeded: true },
   { id: "rick", name: "rick", active: false, seeded: true },
@@ -842,6 +845,16 @@ function applyRemoteMove(event) {
   render();
 }
 
+function scheduleHeartbeat(delay = 250) {
+  window.clearTimeout(heartbeatTimer);
+  heartbeatTimer = window.setTimeout(() => heartbeatOnline(), delay);
+}
+
+function startFastHeartbeat(durationMs = 30000) {
+  fastHeartbeatUntil = Math.max(fastHeartbeatUntil, Date.now() + durationMs);
+  scheduleHeartbeat(250);
+}
+
 function handleOnlineResponse(data) {
   if (!data) {
     onlineNotice = "Relay unavailable. Online invites are not being sent right now.";
@@ -881,9 +894,16 @@ function handleOnlineResponse(data) {
 }
 
 async function heartbeatOnline() {
-  multiplayer.setName(onlineNameInput.value);
-  const data = await multiplayer.heartbeat(gameSnapshot());
-  handleOnlineResponse(data);
+  if (heartbeatInFlight) return;
+  heartbeatInFlight = true;
+  try {
+    multiplayer.setName(onlineNameInput.value);
+    const data = await multiplayer.heartbeat(gameSnapshot());
+    handleOnlineResponse(data);
+  } finally {
+    heartbeatInFlight = false;
+    if (Date.now() < fastHeartbeatUntil && !isOnlineGame()) scheduleHeartbeat(1000);
+  }
 }
 
 async function sendChallenge(random, target = "") {
@@ -918,6 +938,7 @@ async function sendChallenge(random, target = "") {
       inviteOutboxMessage = data.message || `Invite sent to ${inviteLabel}.`;
       onlineNotice = inviteOutboxMessage;
       handleOnlineResponse({ ...data, message: onlineNotice });
+      startFastHeartbeat();
       return;
     }
     inviteOutboxMessage = `Invite to ${inviteLabel} was not sent. Relay unavailable.`;
@@ -969,6 +990,7 @@ async function answerChallenge(accept) {
   };
   enterOnlineGame(data?.game || fallbackGame, "accepter");
   if (data) handleOnlineResponse({ ...data, game: null });
+  startFastHeartbeat(10000);
 }
 
 function finishIfGameOver() {
