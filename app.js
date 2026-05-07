@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=presence-active";
+import { MultiplayerClient } from "./multiplayer-client.js?v=active-self-fix";
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -268,6 +268,11 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
 
 function mergePlayers(players = []) {
   const self = currentPlayerRecord();
+  const selfIds = new Set([
+    String(multiplayer.player.id || ""),
+    String(multiplayer.player.handle || ""),
+    String(multiplayer.player.name || ""),
+  ].filter(Boolean));
   const visibleKnownPlayers = knownPlayers.filter(player => player.id !== "RP" && player.name !== "RP");
   const map = new Map(visibleKnownPlayers.map(player => [player.id, player]));
   map.set(self.id, { ...(map.get(self.id) || {}), ...self });
@@ -275,8 +280,10 @@ function mergePlayers(players = []) {
     const player = normalizePlayer(raw, { includeSelf: true });
     if (!player) continue;
     if (player.id === "RP" || player.name === "RP") continue;
+    if (selfIds.has(player.id) || selfIds.has(player.name)) continue;
     map.set(player.id, { ...(map.get(player.id) || {}), ...player });
   }
+  map.set(self.id, { ...(map.get(self.id) || {}), ...self });
   knownPlayers = [...map.values()].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
   if (selectedPlayerId && !knownPlayers.some(player => player.id === selectedPlayerId)) selectedPlayerId = "";
 }

@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v38-presence-active";
+const CACHE = "tiberius-phone-v39-active-self-fix";
 const ASSETS = [
   "./",
   "index.html",
