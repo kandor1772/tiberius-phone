@@ -1,6 +1,6 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=local-relay";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
 import { MultiplayerClient } from "./multiplayer-client.js?v=clean-relay";
 
 const PIECES = {
@@ -146,7 +146,8 @@ function memorySummaryText() {
   const summary = overlay.sourceSummary();
   const failed = failedMemorySources.length ? ` ${failedMemorySources.length} source${failedMemorySources.length === 1 ? "" : "s"} unreachable.` : "";
   const loading = fullMemoryLoading ? " Loading full memory..." : "";
-  return `Memory: ${summary.sources} source${summary.sources === 1 ? "" : "s"}, ${summary.globalMoves} learned patterns, ${summary.positions} exact positions, ${summary.learned} local moves.${loading}${failed}`;
+  const observed = summary.observed ? ` ${summary.observed} watched human move${summary.observed === 1 ? "" : "s"}.` : "";
+  return `Memory: ${summary.sources} source${summary.sources === 1 ? "" : "s"}, ${summary.globalMoves} learned patterns, ${summary.positions} exact positions, ${summary.learned} local moves.${observed}${loading}${failed}`;
 }
 
 function refreshEngineStatus() {
@@ -430,6 +431,26 @@ function tryBoardMove(from, to) {
 
 function rememberMove(beforeFen, move) {
   trajectory.push({ fen: beforeFen, move: { ...move } });
+}
+
+function learnObservedHumanMove(beforeFen, move, actor = "human") {
+  if (!isOnlineGame()) return;
+  learnMemory(phoneMemory, new Chess(beforeFen), move, "d");
+  phoneMemory.meta ||= {};
+  phoneMemory.meta.human_observed_moves = Number(phoneMemory.meta.human_observed_moves || 0) + 1;
+  phoneMemory.meta.last_human_observation = new Date().toISOString();
+  savePhoneMemory();
+  rebuildOverlay();
+  refreshEngineStatus();
+  queueSync("human_move_observed", {
+    game_id: onlineGame.id,
+    opponent: onlineGame.opponent,
+    actor,
+    san: move.san,
+    uci: uci(move),
+    learned_bucket: "d",
+    before_fen: beforeFen,
+  });
 }
 
 function whiteScore() {
@@ -799,6 +820,7 @@ function applyRemoteMove(event) {
     : chess.move(move, { sloppy: true });
   if (!played) return;
   rememberMove(beforeFen, played);
+  learnObservedHumanMove(beforeFen, played, "remote_human");
   statusMessage = `${onlineGame.opponent} played ${played.san}.`;
   finishIfGameOver();
   saveState();
@@ -991,6 +1013,7 @@ function onSquare(square) {
     selected = null;
     if (result) {
       rememberMove(beforeFen, result);
+      learnObservedHumanMove(beforeFen, result, "local_human");
       afterHumanMove(result);
       return;
     }
@@ -1132,6 +1155,7 @@ function submitMove() {
     return;
   }
   rememberMove(beforeFen, result);
+  learnObservedHumanMove(beforeFen, result, "local_human");
   statusMessage = `You played ${result.san}.`;
   saveState();
   queueSync("move", { san: result.san, uci: uci(result), by: "human" });

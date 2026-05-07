@@ -156,6 +156,8 @@ export function mergeMemorySources(sources) {
   for (const source of sources.filter(Boolean)) {
     const sourceMeta = source.meta || {};
     merged.meta.sources.push(sourceMeta.source_label || sourceMeta.source || sourceMeta.url || "memory");
+    merged.meta.local_learned_positions = Number(merged.meta.local_learned_positions || 0) + Number(sourceMeta.local_learned_positions || 0);
+    merged.meta.human_observed_moves = Number(merged.meta.human_observed_moves || 0) + Number(sourceMeta.human_observed_moves || 0);
     for (const [key, rec] of Object.entries(source.global_moves || {})) {
       merged.global_moves[key] ||= { w: 0, d: 0, l: 0 };
       mergeRecord(merged.global_moves[key], rec);
@@ -201,11 +203,13 @@ export class TiberiusOverlay {
     const globalMoves = Object.keys(this.memory.global_moves || {}).length;
     const positions = Object.keys(this.memory.positions || {}).length;
     const learned = Number(meta.local_learned_positions || 0);
+    const observed = Number(meta.human_observed_moves || 0);
     return {
       sources,
       globalMoves,
       positions,
       learned,
+      observed,
       label: meta.source_label || meta.source || "memory",
     };
   }
