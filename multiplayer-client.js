@@ -5,6 +5,7 @@ const NTFY_PREFIX = "tiberius-phone-chess-v1";
 const ROSTER_KEY = "tiberius-phone-public-roster-v1";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
+const RELAY_TIMEOUT_MS = 8_000;
 const DEFAULT_PLAYER_NAME = "";
 const FALLBACK_PLAYERS = [
   { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true },
@@ -173,7 +174,7 @@ export class MultiplayerClient {
     this.lastPresenceAt = 0;
   }
 
-  async request(path, payload = {}, timeoutMs = 3200) {
+  async request(path, payload = {}, timeoutMs = RELAY_TIMEOUT_MS) {
     const body = {
       player: { ...this.player, progress: payload?.progress || null },
       client: "tiberius-phone-github-pages",
@@ -404,7 +405,7 @@ export class MultiplayerClient {
 
   async heartbeat(state) {
     const [relayResult, ntfyResult] = await Promise.allSettled([
-      this.request("/heartbeat", state, 1200),
+      this.request("/heartbeat", state, RELAY_TIMEOUT_MS),
       this.pollNtfy(),
     ]);
     const relayData = relayResult.status === "fulfilled" ? relayResult.value : null;
@@ -437,7 +438,7 @@ export class MultiplayerClient {
     const payload = { target, targetName, targetHandle: targetName || target, random, inviterColor, game };
     const destination = targetName || target;
     const challengeId = `ntfy-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const relayPromise = this.request("/challenge", payload, 1200);
+    const relayPromise = this.request("/challenge", payload, RELAY_TIMEOUT_MS);
     const ntfyPromise = destination ? this.publishNtfy(destination, {
       kind: "challenge",
       id: challengeId,
@@ -472,7 +473,7 @@ export class MultiplayerClient {
 
   async respond({ challengeId, accept }) {
     const challenge = this.incomingById.get(challengeId);
-    const data = await this.request("/challenge/respond", { challengeId, accept }, 1200);
+    const data = await this.request("/challenge/respond", { challengeId, accept }, RELAY_TIMEOUT_MS);
     if (data?.ok && accept && data.game) {
       this.gamesById.set(data.game.id, data.game);
       this.incomingById.delete(challengeId);
@@ -516,7 +517,7 @@ export class MultiplayerClient {
   }
 
   async move({ gameId, move, fen, pgn }) {
-    const data = await this.request("/game/move", { gameId, move, fen, pgn }, 1200);
+    const data = await this.request("/game/move", { gameId, move, fen, pgn }, RELAY_TIMEOUT_MS);
     if (data) return data;
     const game = this.gamesById.get(gameId);
     if (!game?.opponent_id) return null;
@@ -531,7 +532,7 @@ export class MultiplayerClient {
   }
 
   async forfeit({ gameId, reason = "interrupted" }) {
-    const data = await this.request("/game/forfeit", { gameId, reason }, 1200);
+    const data = await this.request("/game/forfeit", { gameId, reason }, RELAY_TIMEOUT_MS);
     if (data) return data;
     const game = this.gamesById.get(gameId);
     if (game?.opponent_id) {

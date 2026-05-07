@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=shared-progress-roster";
+import { MultiplayerClient } from "./multiplayer-client.js?v=relay-timeout-fix";
 
-const BUILD_ID = "shared-progress-roster";
+const BUILD_ID = "relay-timeout-fix";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
@@ -130,7 +130,7 @@ async function cleanOldAppCaches() {
   try {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v57-${BUILD_ID}`)
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v58-${BUILD_ID}`)
       .map(key => caches.delete(key)));
   } catch (_err) {}
 }
