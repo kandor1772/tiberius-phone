@@ -5,6 +5,7 @@ const NTFY_PREFIX = "tiberius-phone-chess-v1";
 const ROSTER_KEY = "tiberius-phone-public-roster-v1";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
+const DEFAULT_PLAYER_NAME = "RayPalmer";
 const FALLBACK_PLAYERS = [
   { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true },
   { id: "rick", name: "rick", active: false, available: false, seeded: true },
@@ -17,7 +18,9 @@ function canonicalHandle(name) {
 }
 
 function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
-  const name = String(player?.name || "").trim().slice(0, 32);
+  const rawName = String(player?.name || "").trim().slice(0, 32);
+  const savedId = String(player?.id || "").trim();
+  const name = rawName || (savedId.startsWith("anon-") ? DEFAULT_PLAYER_NAME : savedId || DEFAULT_PLAYER_NAME);
   const handle = canonicalHandle(name);
   const id = handle || player?.id || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const deviceId = player?.device_id || player?.deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -91,12 +94,12 @@ function stableId() {
   try {
     const saved = JSON.parse(localStorage.getItem(PLAYER_KEY));
     if (saved?.id) {
-      const normalized = normalizePlayerIdentity(saved);
+      const normalized = normalizePlayerIdentity(saved?.id?.startsWith?.("anon-") && !saved?.name ? { ...saved, name: DEFAULT_PLAYER_NAME } : saved);
       localStorage.setItem(PLAYER_KEY, JSON.stringify(normalized));
       return normalized;
     }
   } catch (_err) {}
-  const player = normalizePlayerIdentity({});
+  const player = normalizePlayerIdentity({ name: DEFAULT_PLAYER_NAME });
   try {
     localStorage.setItem(PLAYER_KEY, JSON.stringify(player));
   } catch (_err) {}
@@ -118,7 +121,9 @@ export class MultiplayerClient {
   }
 
   setName(name) {
-    this.player = normalizePlayerIdentity({ ...this.player, name }, { preserveAliases: false });
+    const clean = String(name || "").trim();
+    if (!clean) return;
+    this.player = normalizePlayerIdentity({ ...this.player, name: clean }, { preserveAliases: false });
     try {
       localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
     } catch (_err) {}

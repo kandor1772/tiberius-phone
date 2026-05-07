@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=solve-progress";
+import { MultiplayerClient } from "./multiplayer-client.js?v=identity-fix";
 
-const BUILD_ID = "solve-progress";
+const BUILD_ID = "identity-fix";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const SOLUTION_TARGETS = {
@@ -12,6 +12,7 @@ const SOLUTION_TARGETS = {
   stockfishAnchors: 25000,
   agreement: 0.92,
 };
+const TEST_PROFILE_PATTERN = /^(anon-|cf-test|lan-test|local-|public-|ray-(?:test|lan|cf|clean|move|win)|norma-(?:test|lan|cf|clean|move|win)|codex-smoke)/i;
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -327,9 +328,11 @@ function currentPlayerRecord() {
 function normalizePlayer(player, { includeSelf = false } = {}) {
   const id = String(player.id || player.name || "").trim();
   if (!id || (!includeSelf && id === multiplayer.player.id)) return null;
+  const name = String(player.name || id).trim();
+  if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
   return {
     id,
-    name: String(player.name || id).trim(),
+    name,
     active: Boolean(player.active || player.available || player.status === "active"),
     last_seen: player.last_seen || player.updated_at || "",
     seeded: Boolean(player.seeded),

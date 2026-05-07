@@ -12,6 +12,16 @@ from urllib.parse import urlparse
 
 
 STALE_AFTER_SECONDS = 90
+TEST_PROFILE_PREFIXES = (
+    "anon-", "cf-test", "lan-test", "local-", "public-", "ray-test", "ray-lan",
+    "ray-cf", "ray-clean", "ray-move", "ray-win", "norma-test", "norma-lan",
+    "norma-cf", "norma-clean", "norma-move", "norma-win", "codex-smoke",
+)
+
+
+def is_test_profile(value: str) -> bool:
+    normalized = str(value or "").strip().lower()
+    return any(normalized.startswith(prefix) for prefix in TEST_PROFILE_PREFIXES)
 
 
 class RelayState:
@@ -76,7 +86,7 @@ class RelayState:
         existing = next((self.players[item] for item in ids if item in self.players), None)
         player_id = str(player.get("id") or player.get("name") or "").strip()
         if not player_id:
-            player_id = f"anon-{uuid.uuid4().hex[:10]}"
+            player_id = "raypalmer"
         name = str(player.get("name") or player_id).strip()
         record = existing or {}
         record.update({
@@ -102,6 +112,8 @@ class RelayState:
             if marker in seen:
                 continue
             seen.add(marker)
+            if is_test_profile(record.get("id", "")) or is_test_profile(record.get("name", "")):
+                continue
             active = now - float(record.get("last_seen", 0)) <= STALE_AFTER_SECONDS
             players.append({
                 "id": record["id"],
