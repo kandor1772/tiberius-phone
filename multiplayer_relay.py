@@ -24,6 +24,13 @@ def is_test_profile(value: str) -> bool:
     return any(normalized.startswith(prefix) for prefix in TEST_PROFILE_PREFIXES)
 
 
+def normalized_keys(*values: object) -> set[str]:
+    keys = {str(value or "").strip() for value in values}
+    keys = {key for key in keys if key}
+    keys.update(key.lower() for key in list(keys))
+    return keys
+
+
 class RelayState:
     def __init__(self) -> None:
         self.lock = threading.RLock()
@@ -33,35 +40,40 @@ class RelayState:
         self.events: dict[str, list[dict]] = {}
 
     def _ids_for(self, player: dict) -> set[str]:
-        ids = {
-            str(player.get("id") or "").strip(),
-            str(player.get("name") or "").strip(),
-            str(player.get("handle") or "").strip(),
-            str(player.get("device_id") or player.get("deviceId") or "").strip(),
-        }
-        for alias in player.get("aliases") or []:
-            ids.add(str(alias).strip())
-        expanded = {item for item in ids if item}
-        expanded.update(item.lower() for item in expanded)
-        return expanded
+        return normalized_keys(
+            player.get("id"),
+            player.get("name"),
+            player.get("handle"),
+            player.get("device_id") or player.get("deviceId"),
+        )
+
+    def _device_id_for(self, player: dict) -> str:
+        return str(player.get("device_id") or player.get("deviceId") or "").strip()
+
+    def _keys_for_record(self, record: dict) -> set[str]:
+        return normalized_keys(record.get("id"), record.get("name"), record.get("handle"), record.get("device_id"))
+
+    def _unindex_record(self, record: dict) -> None:
+        for key, value in list(self.players.items()):
+            if value is record:
+                self.players.pop(key, None)
+
+    def _index_record(self, record: dict) -> None:
+        for key in self._keys_for_record(record):
+            self.players[key] = record
 
     def _record_for(self, player_id: str) -> dict | None:
-        candidates = {str(player_id or "").strip()}
-        candidates.update(item.lower() for item in list(candidates) if item)
-        for candidate in candidates:
+        for candidate in normalized_keys(player_id):
             record = self.players.get(candidate)
             if record:
                 return record
         return None
 
     def _event_keys_for(self, player_id: str) -> set[str]:
-        keys = {str(player_id or "").strip()}
+        keys = normalized_keys(player_id)
         record = self._record_for(player_id)
         if record:
-            keys.update(self._ids_for(record))
-            keys.update(str(alias).strip() for alias in record.get("aliases") or [])
-        keys = {item for item in keys if item}
-        keys.update(item.lower() for item in list(keys))
+            keys.update(self._keys_for_record(record))
         return keys
 
     def queue_event(self, player_id: str, event: dict) -> None:
@@ -82,25 +94,29 @@ class RelayState:
 
     def touch_player(self, player: dict) -> dict:
         now = time.time()
-        ids = self._ids_for(player)
-        existing = next((self.players[item] for item in ids if item in self.players), None)
+        device_id = self._device_id_for(player)
         player_id = str(player.get("id") or player.get("name") or "").strip()
         if not player_id:
-            player_id = "raypalmer"
+            player_id = f"anon-{device_id}" if device_id else ""
         name = str(player.get("name") or player_id).strip()
+        handle = str(player.get("handle") or name).strip()
+        existing = self.players.get(device_id) if device_id else None
+        if not existing:
+            existing = next((self.players[item] for item in normalized_keys(player_id, handle) if item in self.players), None)
         record = existing or {}
+        if record:
+            self._unindex_record(record)
         record.update({
             "id": player_id,
             "name": name,
-            "handle": str(player.get("handle") or name).strip(),
-            "aliases": sorted(ids | set(record.get("aliases") or [])),
+            "handle": handle,
+            "device_id": device_id,
+            "aliases": [],
             "active": True,
             "available": True,
             "last_seen": now,
         })
-        self.players[player_id] = record
-        for alias in record["aliases"]:
-            self.players[alias] = record
+        self._index_record(record)
         return record
 
     def roster(self) -> list[dict]:
