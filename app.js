@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=identity-clean";
+import { MultiplayerClient } from "./multiplayer-client.js?v=self-raypalmer";
 
-const BUILD_ID = "identity-clean";
+const BUILD_ID = "self-raypalmer";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "RayPalmer";
@@ -14,6 +14,10 @@ const SOLUTION_TARGETS = {
   agreement: 0.92,
 };
 const TEST_PROFILE_PATTERN = /^(anon(?:-|$)|cf-test|lan-test|local-|public-|ray-(?:test|lan|cf|clean|move|win)|norma-(?:test|lan|cf|clean|move|win)|codex-smoke)/i;
+
+function identityKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -125,7 +129,7 @@ async function cleanOldAppCaches() {
   try {
     const keys = await caches.keys();
     await Promise.all(keys
-      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v44-${BUILD_ID}`)
+      .filter(key => key.startsWith(CACHE_PREFIX) && key !== `tiberius-phone-v51-${BUILD_ID}`)
       .map(key => caches.delete(key)));
   } catch (_err) {}
 }
@@ -316,6 +320,7 @@ function playerLabel(id) {
 }
 
 function currentPlayerRecord() {
+  multiplayer.repairIdentity(DEFAULT_PLAYER_NAME);
   const label = multiplayer.label();
   return {
     id: multiplayer.player.id,
@@ -347,14 +352,25 @@ function mergePlayers(players = []) {
     String(multiplayer.player.handle || ""),
     String(multiplayer.player.name || ""),
   ].filter(Boolean));
-  const visibleKnownPlayers = knownPlayers.filter(player => player.id !== "RP" && player.name !== "RP");
+  const selfKeys = new Set([...selfIds, self.id, self.name].map(identityKey).filter(Boolean));
+  const visibleKnownPlayers = knownPlayers.filter(player => (
+    player.id !== "RP"
+    && player.name !== "RP"
+    && !selfKeys.has(identityKey(player.id))
+    && !selfKeys.has(identityKey(player.name))
+  ));
   const map = new Map(visibleKnownPlayers.map(player => [player.id, player]));
   map.set(self.id, { ...(map.get(self.id) || {}), ...self });
   for (const raw of players) {
     const player = normalizePlayer(raw, { includeSelf: true });
     if (!player) continue;
     if (player.id === "RP" || player.name === "RP") continue;
-    if (selfIds.has(player.id) || selfIds.has(player.name)) continue;
+    if (
+      selfIds.has(player.id)
+      || selfIds.has(player.name)
+      || selfKeys.has(identityKey(player.id))
+      || selfKeys.has(identityKey(player.name))
+    ) continue;
     map.set(player.id, { ...(map.get(player.id) || {}), ...player });
   }
   map.set(self.id, { ...(map.get(self.id) || {}), ...self });
@@ -366,12 +382,15 @@ function renderRoster() {
   if (!playerRosterEl) return;
   playerRosterEl.innerHTML = "";
   const self = currentPlayerRecord();
+  const selfKeys = new Set([self.id, self.name, multiplayer.player.handle].map(identityKey).filter(Boolean));
   const roster = [
     self,
     ...knownPlayers.filter(player => (
       player.id !== self.id
       && player.id !== "RP"
       && player.name !== "RP"
+      && !selfKeys.has(identityKey(player.id))
+      && !selfKeys.has(identityKey(player.name))
       && !player.self
     )),
   ];
