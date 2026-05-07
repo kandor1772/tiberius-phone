@@ -37,6 +37,10 @@ export class StockfishAdapter {
     if (this.worker) this.worker.postMessage(line);
   }
 
+  isBusy() {
+    return this.pending.length > 0;
+  }
+
   _onLine(line) {
     if (line === "readyok") {
       this.ready = true;

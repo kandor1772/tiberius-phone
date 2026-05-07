@@ -1,11 +1,17 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=local-relay";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=live-moves";
+import { MultiplayerClient } from "./multiplayer-client.js?v=solve-progress";
 
-const BUILD_ID = "live-moves";
+const BUILD_ID = "solve-progress";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
+const SOLUTION_TARGETS = {
+  successfulMoves: 100000,
+  exactPositions: 50000,
+  stockfishAnchors: 25000,
+  agreement: 0.92,
+};
 
 const PIECES = {
   wp: "♟", wn: "♞", wb: "♝", wr: "♜", wq: "♛", wk: "♚",
@@ -40,6 +46,9 @@ const whenTextEl = document.getElementById("whenText");
 const preserveText = document.getElementById("preserveText");
 const tradeoffText = document.getElementById("tradeoffText");
 const coachTextEl = document.getElementById("coachText");
+const solutionProgressFillEl = document.getElementById("solutionProgressFill");
+const solutionProgressTextEl = document.getElementById("solutionProgressText");
+const solutionProgressDetailEl = document.getElementById("solutionProgressDetail");
 const syncTextEl = document.getElementById("syncText");
 const onlineNameInput = document.getElementById("onlineNameInput");
 const playerRosterEl = document.getElementById("playerRoster");
@@ -82,6 +91,8 @@ let inviteOutboxMessage = "";
 let heartbeatInFlight = false;
 let fastHeartbeatUntil = 0;
 let heartbeatTimer = null;
+let trainerTimer = null;
+let trainerLine = new Chess();
 let knownPlayers = [
   { id: "raypalmer", name: "RayPalmer", active: false, seeded: true },
   { id: "rick", name: "rick", active: false, seeded: true },
@@ -181,11 +192,40 @@ function memorySummaryText() {
   return `Memory: ${summary.sources} source${summary.sources === 1 ? "" : "s"}, ${summary.globalMoves} learned patterns, ${summary.positions} exact positions, ${summary.learned} local moves.${observed}${loading}${failed}`;
 }
 
+function solutionProgress() {
+  const summary = overlay.sourceSummary();
+  const meta = phoneMemory.meta || {};
+  const successfulMoves = Number(meta.successful_moves_learned || 0);
+  const anchors = Number(meta.stockfish_training_anchors || 0);
+  const agree = Number(meta.stockfish_agreements || 0);
+  const checked = Number(meta.stockfish_training_positions || 0);
+  const agreementRate = checked ? agree / checked : 0;
+  const positionCoverage = Math.min(1, summary.positions / SOLUTION_TARGETS.exactPositions);
+  const winnerCoverage = Math.min(1, successfulMoves / SOLUTION_TARGETS.successfulMoves);
+  const anchorCoverage = Math.min(1, anchors / SOLUTION_TARGETS.stockfishAnchors);
+  const agreementCoverage = Math.min(1, agreementRate / SOLUTION_TARGETS.agreement);
+  const raw = (0.34 * positionCoverage) + (0.3 * winnerCoverage) + (0.24 * anchorCoverage) + (0.12 * agreementCoverage);
+  const percent = Math.min(99.9, raw * 100);
+  const solved = positionCoverage >= 1 && winnerCoverage >= 1 && anchorCoverage >= 1 && agreementRate >= SOLUTION_TARGETS.agreement;
+  return { summary, successfulMoves, anchors, checked, agreementRate, percent, solved };
+}
+
+function updateSolutionProgress() {
+  if (!solutionProgressFillEl || !solutionProgressTextEl || !solutionProgressDetailEl) return;
+  const progress = solutionProgress();
+  solutionProgressFillEl.style.width = `${Math.max(2, progress.percent).toFixed(1)}%`;
+  solutionProgressTextEl.textContent = progress.solved
+    ? "Solved condition reached for this model: enough successful winner lines, exact positions, and Stockfish anchors agree."
+    : `${progress.percent.toFixed(2)}% toward the current proof target. Not solved yet.`;
+  solutionProgressDetailEl.textContent = `Winner moves ${progress.successfulMoves}/${SOLUTION_TARGETS.successfulMoves}; exact positions ${progress.summary.positions}/${SOLUTION_TARGETS.exactPositions}; Stockfish anchors ${progress.anchors}/${SOLUTION_TARGETS.stockfishAnchors}; anchor agreement ${(progress.agreementRate * 100).toFixed(1)}%.`;
+}
+
 function refreshEngineStatus() {
   const engine = stockfishReady
     ? "Running on phone with Stockfish worker + Tiberius overlay."
     : "Booting Stockfish worker before Tiberius moves.";
   engineStatusEl.textContent = `${engine} ${memorySummaryText()}`;
+  updateSolutionProgress();
 }
 
 function startStockfishBoot() {
@@ -451,6 +491,7 @@ function render() {
     gameResult = chess.isCheckmate() ? (chess.turn() === "w" ? "0-1" : "1-0") : "1/2-1/2";
     gameActive = false;
   }
+  updateSolutionProgress();
   syncSummary();
   onlineSummary();
   renderInviteOutbox();
@@ -494,6 +535,15 @@ function winningSide(finalWhiteScore) {
   if (finalWhiteScore === 1) return "w";
   if (finalWhiteScore === 0) return "b";
   return "";
+}
+
+function applySuccessfulTrainingMove(board, move, source = "stockfish") {
+  learnMemory(phoneMemory, new Chess(board.fen()), move, "w");
+  phoneMemory.meta ||= {};
+  phoneMemory.meta.learning_policy = LEARNING_POLICY;
+  if (source === "stockfish") {
+    phoneMemory.meta.stockfish_training_anchors = Number(phoneMemory.meta.stockfish_training_anchors || 0) + 1;
+  }
 }
 
 function rebuildOverlay() {
@@ -1045,6 +1095,47 @@ function completeGameLearning(force = false) {
   refreshEngineStatus();
 }
 
+async function backgroundTrainingStep() {
+  if (!stockfishReady || engineThinking || stockfish.isBusy()) return;
+  if (gameActive && !isOnlineGame()) return;
+  if (document.visibilityState === "hidden") return;
+  if (trainerLine.isGameOver() || trainerLine.history().length > 80) trainerLine = new Chess();
+  const board = new Chess(trainerLine.fen());
+  const result = await stockfish.bestMove(board.fen(), { depth: 8 });
+  const best = result?.best || "";
+  const move = board.moves({ verbose: true }).find(item => uci(item) === best);
+  if (!move) {
+    trainerLine = new Chess();
+    return;
+  }
+  const overlayChoice = overlay.chooseMove(board, best);
+  applySuccessfulTrainingMove(board, move, "stockfish");
+  phoneMemory.meta.stockfish_training_positions = Number(phoneMemory.meta.stockfish_training_positions || 0) + 1;
+  if (overlayChoice && uci(overlayChoice.move) === best) {
+    phoneMemory.meta.stockfish_agreements = Number(phoneMemory.meta.stockfish_agreements || 0) + 1;
+  }
+  phoneMemory.meta.last_stockfish_anchor = best;
+  phoneMemory.meta.last_stockfish_training_at = new Date().toISOString();
+  trainerLine.move(move);
+  savePhoneMemory();
+  rebuildOverlay();
+  refreshEngineStatus();
+  queueSync("stockfish_training_anchor", {
+    fen: board.fen(),
+    best_move: best,
+    overlay_move: overlayChoice ? uci(overlayChoice.move) : "",
+    agreement: Boolean(overlayChoice && uci(overlayChoice.move) === best),
+  });
+}
+
+function startBackgroundTraining() {
+  window.clearInterval(trainerTimer);
+  trainerTimer = window.setInterval(() => {
+    backgroundTrainingStep().catch(() => {});
+  }, 12000);
+  backgroundTrainingStep().catch(() => {});
+}
+
 function onSquare(square) {
   if (engineThinking || !isHumanTurn() || chess.isGameOver()) return;
   const piece = chess.get(square);
@@ -1300,7 +1391,9 @@ async function boot() {
   explainForHumanTurn();
   render();
 
-  startStockfishBoot();
+  startStockfishBoot().then(ready => {
+    if (ready) startBackgroundTraining();
+  });
 
   fullMemoryLoading = true;
   refreshEngineStatus();
