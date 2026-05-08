@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v22";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v23";
 
-const ASSET_BUILD_ID = "authoritative-relay-roster-v22";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v23";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v88-pc-board-fit";
+const CURRENT_CACHE = "tiberius-phone-v89-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
 
 function detectDefaultPlayerName() {
@@ -591,10 +591,16 @@ function notifyIncomingChallenge(challenge) {
 }
 
 function syncOnlineName({ heartbeat = false } = {}) {
+  const currentName = multiplayer.player.name || "";
+  const nextName = sanitizeDisplayName(onlineNameInput.value, currentName || DEFAULT_PLAYER_NAME);
+  if (!nextName || nextName === currentName) {
+    onlineNameInput.value = currentName;
+    return false;
+  }
   saveState("profile_before_switch", { sync: false });
   const before = multiplayer.label();
   const beforeScope = profileScope();
-  multiplayer.setName(onlineNameInput.value);
+  multiplayer.setName(nextName);
   onlineNameInput.value = multiplayer.player.name || "";
   if (profileScope() !== beforeScope) {
     phoneMemory = makePhoneMemory();
@@ -623,6 +629,7 @@ function syncOnlineName({ heartbeat = false } = {}) {
     startFastHeartbeat(120000);
     heartbeatOnline();
   }
+  return true;
 }
 
 function scheduleHandleSync() {
@@ -1665,10 +1672,14 @@ returnGameBtn.addEventListener("click", () => {
   if (game) loadGameRecord(game);
 });
 onlineNameInput.addEventListener("change", () => {
+  syncOnlineName({ heartbeat: true });
   render();
 });
 onlineNameInput.addEventListener("input", () => render());
-onlineNameInput.addEventListener("blur", () => render());
+onlineNameInput.addEventListener("blur", () => {
+  syncOnlineName({ heartbeat: true });
+  render();
+});
 onlineNameInput.addEventListener("keydown", event => {
   if (event.key === "Enter") {
     event.preventDefault();
