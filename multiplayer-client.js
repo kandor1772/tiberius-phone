@@ -2,7 +2,7 @@ const PLAYER_KEY = "tiberius-phone-player-v1";
 const NTFY_SEEN_KEY = "tiberius-phone-ntfy-seen-v1";
 const NTFY_BASE = "https://ntfy.sh";
 const NTFY_PREFIX = "tiberius-phone-chess-v1";
-const ROSTER_KEY = "tiberius-phone-public-roster-v1";
+const ROSTER_KEY = "tiberius-phone-public-roster-v2";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
 const RELAY_TIMEOUT_MS = 8_000;
@@ -33,6 +33,8 @@ function canonicalRosterKey(value) {
 }
 
 function rosterIdentityKey(player) {
+  const deviceId = String(player?.device_id || player?.deviceId || "").trim();
+  if (deviceId) return `device:${deviceId}`;
   return canonicalRosterKey(player?.handle || player?.name || player?.id);
 }
 
@@ -341,7 +343,7 @@ export class MultiplayerClient {
       device_id: this.player.device_id,
       updated_at: now,
     });
-    this.rememberRosterPlayer({ id: handle, name: this.label(), handle, last_seen: now });
+    this.rememberRosterPlayer({ id: handle, name: this.label(), handle, device_id: this.player.device_id, last_seen: now });
     return true;
   }
 
@@ -369,6 +371,7 @@ export class MultiplayerClient {
         id: message.id || message.handle || message.name,
         name: message.name || message.handle || message.id,
         handle: message.handle || message.id,
+        device_id: message.device_id || message.deviceId,
         last_seen: Number(message.updated_at || envelope.time * 1000 || Date.now()),
       });
     }

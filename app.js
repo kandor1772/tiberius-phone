@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=mork-roster-dedupe";
+import { MultiplayerClient } from "./multiplayer-client.js?v=device-roster-dedupe";
 
-const BUILD_ID = "mork-roster-dedupe";
+const BUILD_ID = "device-roster-dedupe";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
@@ -26,6 +26,8 @@ function canonicalRosterKey(value) {
 }
 
 function rosterIdentityKey(player) {
+  const deviceId = String(player?.device_id || player?.deviceId || "").trim();
+  if (deviceId) return `device:${deviceId}`;
   return canonicalRosterKey(player?.handle || player?.name || player?.id);
 }
 
@@ -393,6 +395,8 @@ function currentPlayerRecord() {
   return {
     id: multiplayer.player.id,
     name: label || "Enter handle",
+    handle: multiplayer.player.handle || "",
+    device_id: multiplayer.player.device_id || "",
     active: true,
     available: true,
     self: true,
@@ -407,6 +411,8 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
   return {
     id,
     name,
+    handle: String(player.handle || "").trim(),
+    device_id: String(player.device_id || player.deviceId || "").trim(),
     active: Boolean(player.active || player.available || player.status === "active"),
     last_seen: player.last_seen || player.updated_at || "",
     seeded: Boolean(player.seeded),
@@ -419,8 +425,12 @@ function mergePlayers(players = []) {
     String(multiplayer.player.id || ""),
     String(multiplayer.player.handle || ""),
     String(multiplayer.player.name || ""),
+    String(multiplayer.player.device_id || ""),
   ].filter(Boolean));
-  const canonicalSelfKeys = new Set([...selfIds, self.id, self.name].map(canonicalRosterKey).filter(Boolean));
+  const canonicalSelfKeys = new Set([
+    ...[...selfIds, self.id, self.name].map(canonicalRosterKey),
+    rosterIdentityKey(self),
+  ].filter(Boolean));
   const visibleKnownPlayers = knownPlayers.filter(player => (
     player.id !== "RP"
     && player.name !== "RP"
@@ -454,7 +464,10 @@ function renderRoster() {
   if (!playerRosterEl) return;
   playerRosterEl.innerHTML = "";
   const self = currentPlayerRecord();
-  const selfKeys = new Set([self.id, self.name, multiplayer.player.handle].map(canonicalRosterKey).filter(Boolean));
+  const selfKeys = new Set([
+    ...[self.id, self.name, multiplayer.player.handle].map(canonicalRosterKey),
+    rosterIdentityKey(self),
+  ].filter(Boolean));
   const roster = [
     self,
     ...knownPlayers.filter(player => (
