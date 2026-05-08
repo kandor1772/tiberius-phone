@@ -41,6 +41,24 @@ https://eltiburon.duckdns.org/tiberius-memory-lite.json
 
 Both computers can then be off. The GitHub Pages app stays online, and sync/progress continue through the cloud backend.
 
+## One-Command Ubuntu VM Install
+
+On a small always-on Ubuntu VM, run:
+
+```bash
+sudo sh -c 'curl -fsSL https://raw.githubusercontent.com/kandor1772/tiberius-phone/main/deploy/install-ubuntu.sh | sh'
+```
+
+Then set the DuckDNS record for `eltiburon` to the VM public IP. If you have a DuckDNS token on the VM:
+
+```bash
+export DUCKDNS_TOKEN="your-token"
+export DUCKDNS_DOMAIN="eltiburon"
+sh /opt/tiberius-phone/deploy/duckdns-update.sh
+```
+
+To keep DuckDNS fresh, add that command to cron or a systemd timer.
+
 ## Reverse Proxy
 
 Use Caddy or Nginx to terminate HTTPS and proxy to the backend port.
@@ -52,6 +70,18 @@ eltiburon.duckdns.org {
   reverse_proxy 127.0.0.1:8776
 }
 ```
+
+The repository includes this as `deploy/Caddyfile`.
+
+## GitHub Container Image
+
+The workflow in `.github/workflows/backend-image.yml` publishes:
+
+```text
+ghcr.io/kandor1772/tiberius-backend:latest
+```
+
+That image can be used on any container host that supports persistent storage mounted at `/data`.
 
 ## State
 
