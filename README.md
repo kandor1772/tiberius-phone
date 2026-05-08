@@ -34,7 +34,7 @@ What runs on the phone:
 - Tiberius-core sync outbox for game progress, moves, concessions, and completed games
 - Start as White, start as Black, concede, reset board, move list, FEN, and analysis panels
 - Saved Games panel to resume recent games
-- DuckDNS-style Black start: Tiberius waits for the Stockfish anchor before making White's first move
+- Black-side start: Tiberius waits for the Stockfish anchor before making White's first move
 - Black-side board orientation uses the actual square lookup for each flipped coordinate, so the visible board and legal move targets match
 - Online play panel with a selectable roster, seeded `RP` and `rick`, active/inactive player status, invite notifications, and one `Play Human` action
 
@@ -65,7 +65,7 @@ Memory:
 
 Reconstruction:
 
-- [PORTFOLIO_RECONSTRUCTION.md](PORTFOLIO_RECONSTRUCTION.md) documents the architecture, file map, local run commands, GitHub Pages deployment, memory provenance, and the sync contract needed for DuckDNS/cloud ingestion.
+- [PORTFOLIO_RECONSTRUCTION.md](PORTFOLIO_RECONSTRUCTION.md) documents the architecture, file map, local run commands, GitHub Pages deployment, memory provenance, and the original sync contract.
 
 Local test:
 
@@ -86,7 +86,7 @@ This repository is configured for GitHub Pages from `main` at the repository roo
 
 Always-on sync:
 
-GitHub Pages keeps the app online. The live dialogue/progress path needs the backend in `multiplayer_relay.py` running behind DuckDNS or another cloud URL. DuckDNS alone is not a server; it must point to an always-on backend.
+GitHub Pages keeps the app online. The live dialogue/progress path needs the backend in `multiplayer_relay.py` running behind the public `eltiburon.duckdns.org` endpoint.
 
 Fallback relay:
 

@@ -175,7 +175,7 @@ class RelayState:
 
     def _roster_key_for_record(self, record: dict) -> str:
         person_key = canonical_roster_key(record.get("handle") or record.get("name") or record.get("id"))
-        if person_key in {"mork", "liamz"}:
+        if person_key == "mork":
             return f"person:{person_key}"
         device_id = self._device_id_for(record)
         if device_id:
@@ -227,7 +227,7 @@ class RelayState:
                 events.append(event)
         return events
 
-    def touch_player(self, player: dict) -> dict:
+    def touch_player(self, player: dict, platform: str = "") -> dict:
         now = time.time()
         self.prune_stale_players()
         device_id = self._device_id_for(player)
@@ -236,10 +236,10 @@ class RelayState:
             player_id = f"anon-{device_id}" if device_id else ""
         name = str(player.get("name") or player_id).strip()
         handle = str(player.get("handle") or name).strip()
-        if canonical_roster_key(handle or name or player_id) == "liamz":
-            player_id = "liamz"
-            name = "liamz"
-            handle = "liamz"
+        canonical_name = "Mork"
+        name = canonical_name
+        handle = canonical_name
+        player_id = canonical_roster_key(canonical_name)
         incoming_key = self._roster_key_for_record({
             "id": player_id,
             "name": name,
@@ -330,9 +330,9 @@ class RelayState:
             "created_at": challenge["created_at"],
         }
 
-    def heartbeat(self, player: dict) -> dict:
+    def heartbeat(self, player: dict, platform: str = "") -> dict:
         with self.lock:
-            record = self.touch_player(player)
+            record = self.touch_player(player, platform)
             progress = player.get("progress") or {}
             if isinstance(progress, dict):
                 self.merge_progress(progress)
@@ -348,9 +348,9 @@ class RelayState:
                 "message": "Relay connected.",
             }
 
-    def challenge(self, player: dict, payload: dict) -> dict:
+    def challenge(self, player: dict, payload: dict, platform: str = "") -> dict:
         with self.lock:
-            sender = self.touch_player(player)
+            sender = self.touch_player(player, platform)
             target = str(payload.get("target") or "").strip()
             target_name = str(payload.get("targetName") or target).strip()
             target_handle = str(payload.get("targetHandle") or target_name or target).strip()
@@ -382,9 +382,9 @@ class RelayState:
                 "message": f"Invite sent to {target_name or target_handle or target}.",
             }
 
-    def respond(self, player: dict, payload: dict) -> dict:
+    def respond(self, player: dict, payload: dict, platform: str = "") -> dict:
         with self.lock:
-            responder = self.touch_player(player)
+            responder = self.touch_player(player, platform)
             challenge_id = str(payload.get("challengeId") or "").strip()
             accept = bool(payload.get("accept"))
             challenge = self.challenges.get(challenge_id)
@@ -423,9 +423,9 @@ class RelayState:
                 "message": "Invite accepted.",
             }
 
-    def move(self, player: dict, payload: dict) -> dict:
+    def move(self, player: dict, payload: dict, platform: str = "") -> dict:
         with self.lock:
-            sender = self.touch_player(player)
+            sender = self.touch_player(player, platform)
             game_id = str(payload.get("gameId") or "").strip()
             game = self.games.get(game_id)
             if not game:
@@ -443,9 +443,9 @@ class RelayState:
                 })
             return {"ok": True, "players": self.roster(), "message": "Move relayed."}
 
-    def forfeit(self, player: dict, payload: dict) -> dict:
+    def forfeit(self, player: dict, payload: dict, platform: str = "") -> dict:
         with self.lock:
-            sender = self.touch_player(player)
+            sender = self.touch_player(player, platform)
             game_id = str(payload.get("gameId") or "").strip()
             game = self.games.pop(game_id, None)
             if game:
@@ -510,21 +510,22 @@ class RelayHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0") or "0")
             body = json.loads(self.rfile.read(length).decode("utf-8") if length else "{}")
             player = body.get("player") or {}
+            platform = str(body.get("platform") or "").strip()
             payload = body.get("payload") or {}
             path = urlparse(self.path).path
             if path == "/api/phone-sync" or path.endswith("/phone-sync"):
                 events = body.get("events") or []
                 data = self.server.state.ingest_phone_sync(events if isinstance(events, list) else [])
             elif path.endswith("/heartbeat"):
-                data = self.server.state.heartbeat(player)
+                data = self.server.state.heartbeat(player, platform)
             elif path.endswith("/challenge/respond"):
-                data = self.server.state.respond(player, payload)
+                data = self.server.state.respond(player, payload, platform)
             elif path.endswith("/challenge"):
-                data = self.server.state.challenge(player, payload)
+                data = self.server.state.challenge(player, payload, platform)
             elif path.endswith("/game/move"):
-                data = self.server.state.move(player, payload)
+                data = self.server.state.move(player, payload, platform)
             elif path.endswith("/game/forfeit"):
-                data = self.server.state.forfeit(player, payload)
+                data = self.server.state.forfeit(player, payload, platform)
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return

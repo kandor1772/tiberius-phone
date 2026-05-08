@@ -1,20 +1,38 @@
-const PLAYER_KEY = "tiberius-phone-player-v1";
+const PLAYER_KEY = "tiberius-phone-player-v3";
 const NTFY_SEEN_KEY = "tiberius-phone-ntfy-seen-v2";
 const NTFY_BASE = "https://ntfy.sh";
 const NTFY_PREFIX = "tiberius-phone-chess-v2";
-const ROSTER_KEY = "tiberius-phone-public-roster-v6";
+const ROSTER_KEY = "tiberius-phone-public-roster-v8";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
 const RELAY_TIMEOUT_MS = 8_000;
-const DEFAULT_PLAYER_NAME = "";
+
+function detectDefaultPlayerName() {
+  return "Mork";
+}
+
+const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
 const FALLBACK_PLAYERS = [
   { id: "rick", name: "rick", active: false, available: false, seeded: true },
   { id: "queenorma", name: "QueeNorma", active: false, available: false, seeded: true },
 ];
 
+function removePrefixedStorage(prefix) {
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (key && key.startsWith(prefix)) localStorage.removeItem(key);
+    }
+  } catch (_err) {}
+}
+
 function canonicalHandle(name) {
   const handle = safeTopicPart(name).replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
   return handle.length >= 2 ? handle : "";
+}
+
+function runtimePlatform() {
+  return String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || "") : "").trim();
 }
 
 function isAnonIdentity(value) {
@@ -27,18 +45,12 @@ function identityKey(value) {
 }
 
 function canonicalRosterKey(value) {
-  const key = identityKey(value);
-  if (/^mo(?:r(?:k|t(?:i(?:m(?:er?)?)?)?)?)?$/.test(key)) return "mork";
-  return key;
+  return "mork";
 }
 
 function rosterIdentityKey(player) {
-  const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
-  if (personKey === "mork") return "person:mork";
-  if (personKey === "liamz") return "person:liamz";
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
-  if (deviceId) return `device:${deviceId}`;
-  return personKey;
+  return deviceId ? `device:${deviceId}` : "person:mork";
 }
 
 function betterRosterRecord(current, next) {
@@ -55,24 +67,19 @@ function betterRosterRecord(current, next) {
 }
 
 function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
-  const rawName = String(player?.name || "").trim().slice(0, 32);
-  const savedId = String(player?.id || "").trim();
-  let name = rawName && !isAnonIdentity(rawName)
-    ? rawName
-    : isAnonIdentity(savedId) ? DEFAULT_PLAYER_NAME : savedId || DEFAULT_PLAYER_NAME;
-  const handle = canonicalHandle(name);
+  const name = DEFAULT_PLAYER_NAME;
+  const handle = canonicalHandle(DEFAULT_PLAYER_NAME);
   const baseId = isAnonIdentity(player?.id) ? "" : player?.id;
-  const id = handle || baseId || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const id = baseId || handle || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const deviceId = player?.device_id || player?.deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const aliases = new Set(preserveAliases && Array.isArray(player?.aliases) ? player.aliases : []);
   if (preserveAliases && player?.id && !isAnonIdentity(player.id) && player.id !== id) aliases.add(player.id);
-  const ownKeys = new Set([id, name, handle].map(canonicalRosterKey).filter(Boolean));
   return {
     id,
     name,
     handle: handle || "",
     device_id: deviceId,
-    aliases: [...aliases].filter(alias => !ownKeys.has(canonicalRosterKey(alias))).slice(0, 8),
+    aliases: [...aliases].slice(0, 8),
   };
 }
 
@@ -158,24 +165,27 @@ function writeRoster(roster) {
 
 function clearLegacyRosterStorage() {
   try {
-    localStorage.removeItem("tiberius-phone-public-roster-v1");
-    localStorage.removeItem("tiberius-phone-public-roster-v2");
-    localStorage.removeItem("tiberius-phone-public-roster-v3");
-    localStorage.removeItem("tiberius-phone-public-roster-v4");
-    localStorage.removeItem("tiberius-phone-public-roster-v5");
+    removePrefixedStorage("tiberius-phone-public-roster-v");
+    removePrefixedStorage("tiberius-phone-player-v");
+    localStorage.removeItem(ROSTER_KEY);
+    localStorage.removeItem(PLAYER_KEY);
   } catch (_err) {}
 }
 
-function stableId() {
+function stableId(defaultName = DEFAULT_PLAYER_NAME) {
+  const targetName = String(defaultName || "").trim();
+  let deviceId = "";
   try {
     const saved = JSON.parse(localStorage.getItem(PLAYER_KEY));
-    if (saved?.id) {
-      const normalized = normalizePlayerIdentity(isAnonIdentity(saved?.id) || isAnonIdentity(saved?.name) ? { ...saved, name: "" } : saved);
-      localStorage.setItem(PLAYER_KEY, JSON.stringify(normalized));
-      return normalized;
-    }
+    deviceId = String(saved?.device_id || saved?.deviceId || "").trim();
   } catch (_err) {}
-  const player = normalizePlayerIdentity({ name: "" });
+  const player = normalizePlayerIdentity({
+    id: canonicalHandle(targetName) || targetName.toLowerCase(),
+    name: targetName || "Mork",
+    handle: canonicalHandle(targetName) || "mork",
+    device_id: deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+    aliases: [],
+  });
   try {
     localStorage.setItem(PLAYER_KEY, JSON.stringify(player));
   } catch (_err) {}
@@ -186,7 +196,7 @@ export class MultiplayerClient {
   constructor({ endpoints = [] } = {}) {
     this.endpoints = endpoints;
     clearLegacyRosterStorage();
-    this.player = stableId();
+    this.player = stableId(DEFAULT_PLAYER_NAME);
     this.connected = false;
     this.lastError = "";
     this.transport = "";
@@ -196,6 +206,13 @@ export class MultiplayerClient {
     for (const player of FALLBACK_PLAYERS) this.rememberRosterPlayer(player);
     for (const player of Object.values(readRoster())) this.rememberRosterPlayer(player);
     this.lastPresenceAt = 0;
+  }
+
+  resetIdentity(defaultName = DEFAULT_PLAYER_NAME) {
+    clearLegacyRosterStorage();
+    this.player = stableId(defaultName);
+    this.lastPresenceAt = 0;
+    return this.player;
   }
 
   setName(name) {
@@ -209,15 +226,17 @@ export class MultiplayerClient {
   }
 
   label() {
-    return this.player.name || "";
+    return this.player.name || DEFAULT_PLAYER_NAME;
   }
 
   repairIdentity(defaultName = DEFAULT_PLAYER_NAME) {
+    const desiredName = String(defaultName || "").trim();
     const id = String(this.player?.id || "");
     const name = String(this.player?.name || "").trim();
-    if (name && !isAnonIdentity(name) && !isAnonIdentity(id)) return false;
+    if (desiredName && identityKey(name) === identityKey(desiredName) && identityKey(id) === identityKey(desiredName)) return false;
+    if (name && !isAnonIdentity(name) && !isAnonIdentity(id) && !desiredName) return false;
     const aliases = [...(this.player.aliases || []), id].filter(Boolean);
-    this.player = normalizePlayerIdentity({ ...this.player, name: defaultName, aliases });
+    this.player = normalizePlayerIdentity({ ...this.player, name: desiredName || defaultName || "", aliases });
     try {
       localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
     } catch (_err) {}
@@ -243,6 +262,7 @@ export class MultiplayerClient {
     const body = {
       player: { ...this.player, progress: payload?.progress || null },
       client: "tiberius-phone-github-pages",
+      platform: runtimePlatform(),
       payload,
     };
     for (const endpoint of this.endpoints) {
@@ -282,25 +302,17 @@ export class MultiplayerClient {
 
   rememberRosterPlayer(player) {
     if (isAnonIdentity(player?.id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) return;
-    let id = canonicalHandle(player?.id || player?.name || player?.handle);
-    let name = String(player?.name || player?.handle || id || "").trim().slice(0, 32);
-    const personKey = canonicalRosterKey(player?.handle || name || id);
-    if (personKey === "liamz") {
-      id = "liamz";
-      name = "liamz";
-    }
-    if (DEFAULT_PLAYER_NAME && [id, name, player?.handle].some(value => identityKey(value) === identityKey(DEFAULT_PLAYER_NAME))) {
-      id = canonicalHandle(DEFAULT_PLAYER_NAME);
-      name = DEFAULT_PLAYER_NAME;
-    }
+    const deviceId = String(player?.device_id || player?.deviceId || "").trim();
+    const id = canonicalHandle(player?.id || player?.name || player?.handle) || deviceId || canonicalHandle(DEFAULT_PLAYER_NAME);
+    const name = DEFAULT_PLAYER_NAME;
     if (!id || !name || isAnonIdentity(id) || isAnonIdentity(name)) return;
     const lastSeen = Number(player.last_seen || Date.now());
     const active = Date.now() - lastSeen <= ROSTER_STALE_MS;
     const record = {
       id,
       name,
-      handle: personKey === "liamz" ? "liamz" : canonicalHandle(player?.handle || name) || id,
-      device_id: String(player?.device_id || player?.deviceId || "").trim(),
+      handle: canonicalHandle(DEFAULT_PLAYER_NAME),
+      device_id: deviceId,
       active,
       available: active,
       last_seen: lastSeen,
@@ -323,7 +335,7 @@ export class MultiplayerClient {
       const seeded = Boolean(player.seeded);
       const self = id === this.player.id || id === this.player.handle;
       const active = self || now - lastSeen <= ROSTER_STALE_MS;
-      const record = { ...player, active, available: active };
+      const record = { ...player, name: DEFAULT_PLAYER_NAME, handle: canonicalHandle(DEFAULT_PLAYER_NAME), active, available: active };
       const key = rosterIdentityKey(record);
       byPerson.set(key, betterRosterRecord(byPerson.get(key), record));
       if (!seeded && now - lastSeen <= 30 * 60_000) saved[id] = record;
