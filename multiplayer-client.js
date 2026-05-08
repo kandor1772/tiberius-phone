@@ -344,7 +344,7 @@ export class MultiplayerClient {
           continue;
         }
         this.connected = true;
-        this.transport = endpoint.includes("127.0.0.1") || endpoint.includes("localhost") ? "local relay" : "DuckDNS relay";
+        this.transport = endpoint.includes("127.0.0.1") || endpoint.includes("localhost") ? "local relay" : "public relay";
         this.lastError = "";
         const data = await response.json().catch(() => ({}));
         if (data?.self) {

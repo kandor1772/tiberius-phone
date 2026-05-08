@@ -3,7 +3,7 @@
 GitHub Pages can host the Tiberius phone app, but it cannot hold live matchmaking state. Online play needs a relay at:
 
 ```text
-https://eltiburon.duckdns.org/api/multiplayer
+https://tiberius-phone-relay.q79qmzkmk4.workers.dev
 ```
 
 The browser client is already prepared for this relay. Until the endpoint exists, the online panel stays safe: it shows relay unavailable, keeps the chess engine working, and does not crash the app.

@@ -35,7 +35,7 @@ Game Persistence:
 Multiplayer:
 
 - The static app includes the client-side online play surface and relay calls.
-- Live matchmaking requires a relay at `https://eltiburon.duckdns.org/api/multiplayer`.
+- Live matchmaking uses the permanent Cloudflare Worker relay at `https://tiberius-phone-relay.q79qmzkmk4.workers.dev`.
 - [MULTIPLAYER_RELAY.md](MULTIPLAYER_RELAY.md) documents the endpoint contract and large-traffic guardrails.
 
 Bundled engine:

@@ -14,12 +14,6 @@
       "group": "packaged",
       "phase": "deferred",
       "required": false
-    },
-    {
-      "label": "Live Tiberius memory snapshot",
-      "url": "https://eltiburon.duckdns.org/tiberius-memory-lite.json",
-      "phase": "deferred",
-      "required": false
     }
   ]
 }

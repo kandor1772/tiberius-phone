@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tiberius-phone-relay",
+  "main": "worker/relay-worker.js",
+  "compatibility_date": "2026-05-08",
+  "workers_dev": true,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "RELAY",
+        "class_name": "TiberiusRelay"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "TiberiusRelay"
+      ]
+    }
+  ]
+}
