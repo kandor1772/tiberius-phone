@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v15";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v16";
 
 const BUILD_ID = "authoritative-relay";
-const ASSET_BUILD_ID = "authoritative-relay-roster-v15";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v16";
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v81-pc-board-fit";
+const CURRENT_CACHE = "tiberius-phone-v82-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
 
 function detectDefaultPlayerName() {
@@ -418,12 +418,24 @@ function playerLabel(id) {
 }
 
 function currentPlayerRecord() {
-  const label = multiplayer.label();
+  const selfKeys = new Set([
+    String(multiplayer.player.device_id || "").trim(),
+    String(multiplayer.player.id || "").trim(),
+    String(multiplayer.player.handle || "").trim(),
+    String(multiplayer.player.name || "").trim(),
+  ].filter(Boolean));
+  const matched = knownPlayers.find(player => (
+    selfKeys.has(String(player.device_id || player.deviceId || "").trim())
+    || selfKeys.has(String(playerSelectionKey(player)).trim())
+    || selfKeys.has(String(player.id || "").trim())
+    || selfKeys.has(String(player.name || "").trim())
+    || selfKeys.has(String(player.handle || "").trim())
+  ));
   return {
-    id: multiplayer.player.id,
-    name: label || "Enter handle",
-    handle: multiplayer.player.handle || "",
-    device_id: multiplayer.player.device_id || "",
+    id: matched?.id || multiplayer.player.id,
+    name: matched?.name || matched?.handle || multiplayer.player.name || multiplayer.player.handle || "you",
+    handle: matched?.handle || multiplayer.player.handle || "",
+    device_id: matched?.device_id || multiplayer.player.device_id || "",
     active: true,
     available: true,
     self: true,
@@ -462,11 +474,15 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
 
 function mergePlayers(players = []) {
   const self = currentPlayerRecord();
+  const selfDeviceId = String(self.device_id || multiplayer.player.device_id || "").trim();
   const selfIds = new Set([
     String(multiplayer.player.id || ""),
     String(multiplayer.player.handle || ""),
     String(multiplayer.player.name || ""),
     String(multiplayer.player.device_id || ""),
+    String(self.id || ""),
+    String(self.handle || ""),
+    String(self.name || ""),
   ].filter(Boolean));
   const canonicalSelfKeys = new Set([
     ...[...selfIds, self.id, self.name].map(canonicalRosterKey),
@@ -475,6 +491,8 @@ function mergePlayers(players = []) {
   const visibleKnownPlayers = knownPlayers.filter(player => (
     player.id !== "RP"
     && player.name !== "RP"
+    && String(player.device_id || player.deviceId || "").trim() !== selfDeviceId
+    && playerSelectionKey(player) !== playerSelectionKey(self)
     && !canonicalSelfKeys.has(canonicalRosterKey(player.id))
     && !canonicalSelfKeys.has(canonicalRosterKey(player.name))
   ));
@@ -505,6 +523,8 @@ function renderRoster() {
   if (!playerRosterEl) return;
   playerRosterEl.innerHTML = "";
   const self = currentPlayerRecord();
+  const selfDeviceId = String(self.device_id || multiplayer.player.device_id || "").trim();
+  const selfSelection = playerSelectionKey(self);
   const selfKeys = new Set([
     ...[self.id, self.name, multiplayer.player.handle].map(canonicalRosterKey),
     rosterIdentityKey(self),
@@ -515,6 +535,8 @@ function renderRoster() {
       player.id !== self.id
       && player.id !== "RP"
       && player.name !== "RP"
+      && String(player.device_id || player.deviceId || "").trim() !== selfDeviceId
+      && playerSelectionKey(player) !== selfSelection
       && !selfKeys.has(canonicalRosterKey(player.id))
       && !selfKeys.has(canonicalRosterKey(player.name))
       && !player.self
