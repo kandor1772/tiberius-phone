@@ -28,7 +28,7 @@ function identityKey(value) {
 
 function canonicalRosterKey(value) {
   const key = identityKey(value);
-  if (key.includes("mork")) return "mork";
+  if (/^mo(?:r(?:k|t(?:i(?:m(?:er?)?)?)?)?)?$/.test(key)) return "mork";
   return key;
 }
 
