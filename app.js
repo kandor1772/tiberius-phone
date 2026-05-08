@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v20";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v21";
 
-const ASSET_BUILD_ID = "authoritative-relay-roster-v20";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v21";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v86-pc-board-fit";
+const CURRENT_CACHE = "tiberius-phone-v87-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
 
 function detectDefaultPlayerName() {
@@ -19,6 +19,7 @@ function detectDefaultPlayerName() {
 
 const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
 const OFFENSIVE_NAME_PATTERN = /(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)/i;
+const PERSON_ROSTER_KEYS = new Set(["mork", "liamz", "raypalmer", "queenorma", "rick", "droz", "spock"]);
 
 function sanitizeDisplayName(value, fallback = DEFAULT_PLAYER_NAME) {
   const text = String(value || "").replace(/\s+/g, " ").trim().slice(0, 32);
@@ -47,8 +48,7 @@ function canonicalRosterKey(value) {
 
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
-  if (personKey === "mork") return "person:mork";
-  if (personKey === "liamz") return "person:liamz";
+  if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}`;
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
   return personKey;
@@ -451,7 +451,7 @@ function playerSelectionKey(player) {
 function normalizePlayer(player, { includeSelf = false } = {}) {
   let id = String(player.id || player.name || "").trim();
   if (!id || (!includeSelf && id === multiplayer.player.id)) return null;
-  let name = sanitizeDisplayName(player.handle || player.name || "", DEFAULT_PLAYER_NAME);
+  let name = sanitizeDisplayName(player.name || player.handle || "", DEFAULT_PLAYER_NAME);
   let handle = sanitizeDisplayName(player.handle || name, name);
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
   const personKey = canonicalRosterKey(handle || name || id);

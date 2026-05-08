@@ -19,6 +19,7 @@ TEST_PROFILE_PREFIXES = (
     "norma-cf", "norma-clean", "norma-move", "norma-win", "codex-smoke",
 )
 OFFENSIVE_NAME_PATTERN = re.compile(r"(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)", re.I)
+PERSON_ROSTER_KEYS = {"mork", "liamz", "raypalmer", "queenorma", "rick", "droz", "spock"}
 
 
 def is_test_profile(value: str) -> bool:
@@ -108,7 +109,7 @@ class RelayState:
 
     def _roster_key_for_record(self, record: dict) -> str:
         person_key = canonical_roster_key(record.get("handle") or record.get("name") or record.get("id"))
-        if person_key in {"mork", "liamz"}:
+        if person_key in PERSON_ROSTER_KEYS:
             return f"person:{person_key}"
         device_id = self._device_id_for(record)
         if device_id:
@@ -117,6 +118,10 @@ class RelayState:
 
     def _unique_display_name(self, desired: object, device_id: str, existing: dict | None = None, platform: object = "", *, rename: bool = False) -> str:
         base = sanitize_display_name(desired, default_name_for_platform(platform))
+        base_key = canonical_roster_key(base)
+        existing_key = canonical_roster_key(existing.get("name") or existing.get("handle") or existing.get("id")) if existing else ""
+        if existing and base_key and base_key == existing_key:
+            return base
         occupied = {
             canonical_roster_key(record.get("name") or record.get("handle") or record.get("id"))
             for record in {id(value): value for value in self.players.values()}.values()
@@ -210,14 +215,29 @@ class RelayState:
                 ),
                 None,
             )
+        if not existing:
+            raw_person_key = canonical_roster_key(
+                (player.get("name") if rename else "")
+                or player.get("handle")
+                or player.get("name")
+                or player_id
+            )
+            if raw_person_key in PERSON_ROSTER_KEYS:
+                existing = next(
+                    (
+                        record for record in {id(value): value for value in self.players.values()}.values()
+                        if self._roster_key_for_record(record) == f"person:{raw_person_key}"
+                    ),
+                    None,
+                )
         desired_name = (
-            player.get("handle")
-            or (player.get("name") if rename or not existing else "")
+            (player.get("name") if rename or not existing else "")
             or (existing.get("name") if existing else "")
+            or player.get("handle")
             or default_name_for_platform(platform)
         )
         name = self._unique_display_name(desired_name, device_id, existing, platform, rename=rename)
-        handle = sanitize_display_name(player.get("handle") or name or player_id, name)
+        handle = sanitize_display_name((name if rename else player.get("handle")) or name or player_id, name)
         incoming_key = self._roster_key_for_record({
             "id": player_id,
             "name": name,

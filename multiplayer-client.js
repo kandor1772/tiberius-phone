@@ -17,6 +17,7 @@ function detectDefaultPlayerName() {
 
 const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
 const OFFENSIVE_NAME_PATTERN = /(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)/i;
+const PERSON_ROSTER_KEYS = new Set(["mork", "liamz", "raypalmer", "queenorma", "rick", "droz", "spock"]);
 const FALLBACK_PLAYERS = [
   { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true, last_seen: 1 },
   { id: "liamz", name: "Liamz", active: false, available: false, seeded: true, last_seen: 1 },
@@ -62,8 +63,7 @@ function canonicalRosterKey(value) {
 
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
-  if (personKey === "mork") return "person:mork";
-  if (personKey === "liamz") return "person:liamz";
+  if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}`;
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
   return personKey;
@@ -83,7 +83,7 @@ function betterRosterRecord(current, next) {
 }
 
 function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
-  const rawName = sanitizeDisplayName(player?.handle || player?.name, DEFAULT_PLAYER_NAME);
+  const rawName = sanitizeDisplayName(player?.name || player?.handle, DEFAULT_PLAYER_NAME);
   const fallbackName = sanitizeDisplayName("", DEFAULT_PLAYER_NAME);
   let name = rawName && !isAnonIdentity(rawName)
     ? rawName
@@ -304,7 +304,7 @@ export class MultiplayerClient {
 
   rememberRosterPlayer(player) {
     if (isAnonIdentity(player?.id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) return;
-    let name = sanitizeDisplayName(player?.handle || player?.name || "", DEFAULT_PLAYER_NAME);
+    let name = sanitizeDisplayName(player?.name || player?.handle || "", DEFAULT_PLAYER_NAME);
     if (!name) return;
     let id = canonicalHandle(player?.id || player?.device_id || player?.deviceId || player?.handle || name);
     const personKey = canonicalRosterKey(player?.handle || name || id);
