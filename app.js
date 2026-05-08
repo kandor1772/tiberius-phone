@@ -1,10 +1,10 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v11";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v12";
 
 const BUILD_ID = "authoritative-relay";
-const ASSET_BUILD_ID = "authoritative-relay-roster-v11";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v12";
 const CACHE_PREFIX = "tiberius-phone-";
 const CURRENT_CACHE = `tiberius-phone-v71-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
@@ -413,7 +413,7 @@ function onlineSummary() {
 }
 
 function playerLabel(id) {
-  const player = knownPlayers.find(item => item.id === id || item.name === id);
+  const player = knownPlayers.find(item => playerSelectionKey(item) === id || item.id === id || item.name === id || item.device_id === id);
   return player?.name || id;
 }
 
@@ -428,6 +428,10 @@ function currentPlayerRecord() {
     available: true,
     self: true,
   };
+}
+
+function playerSelectionKey(player) {
+  return String(player?.device_id || player?.deviceId || player?.id || player?.name || "").trim();
 }
 
 function normalizePlayer(player, { includeSelf = false } = {}) {
@@ -494,7 +498,7 @@ function mergePlayers(players = []) {
     remember(player);
   }
   knownPlayers = [self, ...map.values()].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
-  if (selectedPlayerId && !knownPlayers.some(player => player.id === selectedPlayerId)) selectedPlayerId = "";
+  if (selectedPlayerId && !knownPlayers.some(player => playerSelectionKey(player) === selectedPlayerId)) selectedPlayerId = "";
 }
 
 function renderRoster() {
@@ -520,14 +524,15 @@ function renderRoster() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `player-row ${player.active ? "active" : "inactive"}`;
-    if (player.id === selectedPlayerId) button.classList.add("selected-player");
-    button.dataset.playerId = player.id;
+    const selectionKey = playerSelectionKey(player);
+    if (selectionKey === selectedPlayerId) button.classList.add("selected-player");
+    button.dataset.playerId = selectionKey;
     button.disabled = player.self || !player.active;
     button.setAttribute("aria-disabled", String(button.disabled));
     button.innerHTML = `<span>${player.name}</span><strong>${player.self ? "you" : player.active ? "active" : "known"}</strong>`;
     button.addEventListener("click", () => {
       if (player.self) return;
-      selectedPlayerId = selectedPlayerId === player.id ? "" : player.id;
+      selectedPlayerId = selectedPlayerId === selectionKey ? "" : selectionKey;
       render();
     });
     playerRosterEl.appendChild(button);
@@ -1149,7 +1154,10 @@ async function sendChallenge(random, target = "") {
     gameActive = true;
   }
   rememberSuspendedGame();
-  const targetName = target ? playerLabel(target) : "";
+  const targetPlayer = target ? knownPlayers.find(player => playerSelectionKey(player) === target || player.id === target || player.name === target || player.device_id === target) : null;
+  const targetName = targetPlayer ? targetPlayer.name : (target ? playerLabel(target) : "");
+  const targetDevice = targetPlayer?.device_id || "";
+  const targetId = targetPlayer?.id || target;
   const inviteLabel = random ? "random player" : targetName || target || "player";
   inviteSending = true;
   inviteOutboxMessage = `Sending invite to ${inviteLabel}...`;
@@ -1158,8 +1166,10 @@ async function sendChallenge(random, target = "") {
   queueSync("human_invite_sent", { target, target_name: targetName, random, inviter_color: "white" });
   try {
     const data = await multiplayer.challenge({
-      target,
+      target: targetId,
+      targetDevice,
       targetName,
+      targetHandle: targetPlayer?.handle || "",
       random,
       inviterColor: "w",
       game: gameSnapshot(),

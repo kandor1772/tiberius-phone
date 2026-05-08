@@ -266,7 +266,12 @@ class RelayState:
             if now - float(challenge.get("created_at_ts", 0)) > 300:
                 challenge["status"] = "expired"
                 continue
-            targets = {str(challenge.get("target") or ""), str(challenge.get("targetName") or ""), str(challenge.get("targetHandle") or "")}
+            targets = {
+                str(challenge.get("target") or ""),
+                str(challenge.get("targetName") or ""),
+                str(challenge.get("targetHandle") or ""),
+                str(challenge.get("targetDevice") or ""),
+            }
             targets.update(item.lower() for item in list(targets))
             if ids & {item for item in targets if item}:
                 incoming.append(self.public_challenge(challenge))
@@ -319,15 +324,33 @@ class RelayState:
             target = str(payload.get("target") or "").strip()
             target_name = str(payload.get("targetName") or target).strip()
             target_handle = str(payload.get("targetHandle") or target_name or target).strip()
+            target_device = str(payload.get("targetDevice") or "").strip()
             if not target and payload.get("random"):
                 for candidate in self.roster():
                     if candidate["id"] != sender["id"] and candidate["active"]:
                         target = candidate["id"]
                         target_name = candidate["name"]
                         target_handle = candidate.get("handle") or target_name
+                        target_device = candidate.get("device_id") or ""
                         break
-            if not target and not target_handle:
+            if not target and not target_handle and not target_device:
                 return {"ok": False, "players": self.roster(), "message": "No active player available."}
+            target_record = next(
+                (
+                    candidate for candidate in self.roster()
+                    if candidate.get("id") == target
+                    or candidate.get("handle") == target
+                    or candidate.get("name") == target
+                    or candidate.get("device_id") == target
+                    or candidate.get("device_id") == target_device
+                ),
+                None,
+            )
+            if target_record:
+                target = target_record["id"]
+                target_name = target_record["name"]
+                target_handle = target_record.get("handle") or target_name
+                target_device = target_record.get("device_id") or target_device
             challenge_id = f"challenge-{uuid.uuid4().hex[:12]}"
             challenge = {
                 "id": challenge_id,
@@ -336,6 +359,7 @@ class RelayState:
                 "target": target,
                 "targetName": target_name,
                 "targetHandle": target_handle,
+                "targetDevice": target_device,
                 "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "created_at_ts": time.time(),
                 "status": "pending",
