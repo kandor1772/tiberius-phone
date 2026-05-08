@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v16";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v17";
 
 const BUILD_ID = "authoritative-relay";
-const ASSET_BUILD_ID = "authoritative-relay-roster-v16";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v17";
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v82-pc-board-fit";
+const CURRENT_CACHE = "tiberius-phone-v83-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
 
 function detectDefaultPlayerName() {
@@ -543,17 +543,24 @@ function renderRoster() {
     )),
   ];
   for (const player of roster) {
+    const selectionKey = playerSelectionKey(player);
+    if (player.self) {
+      const selfRow = document.createElement("div");
+      selfRow.className = "player-row self active";
+      selfRow.dataset.playerId = selectionKey;
+      selfRow.innerHTML = `<span>${player.name}</span><strong>you</strong>`;
+      playerRosterEl.appendChild(selfRow);
+      continue;
+    }
     const button = document.createElement("button");
     button.type = "button";
     button.className = `player-row ${player.active ? "active" : "inactive"}`;
-    const selectionKey = playerSelectionKey(player);
     if (selectionKey === selectedPlayerId) button.classList.add("selected-player");
     button.dataset.playerId = selectionKey;
-    button.disabled = player.self || !player.active;
+    button.disabled = !player.active;
     button.setAttribute("aria-disabled", String(button.disabled));
-    button.innerHTML = `<span>${player.name}</span><strong>${player.self ? "you" : player.active ? "active" : "known"}</strong>`;
+    button.innerHTML = `<span>${player.name}</span><strong>${player.active ? "active" : "known"}</strong>`;
     button.addEventListener("click", () => {
-      if (player.self) return;
       selectedPlayerId = selectedPlayerId === selectionKey ? "" : selectionKey;
       render();
     });
