@@ -22,6 +22,8 @@ const FALLBACK_PLAYERS = [
   { id: "liamz", name: "Liamz", active: true, available: true, seeded: true },
   { id: "queenorma", name: "QueeNorma", active: true, available: true, seeded: true },
   { id: "rick", name: "rick", active: true, available: true, seeded: true },
+  { id: "droz", name: "Dr. Oz", active: true, available: true, seeded: true },
+  { id: "spock", name: "Spock", active: true, available: true, seeded: true },
 ];
 
 function detectPlatform() {
