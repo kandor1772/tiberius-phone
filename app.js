@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay";
+import { MultiplayerClient } from "./multiplayer-client.js?v=roster-dedupe";
 
-const BUILD_ID = "authoritative-relay";
+const BUILD_ID = "roster-dedupe";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
@@ -17,6 +17,23 @@ const TEST_PROFILE_PATTERN = /^(anon(?:-|$)|cf-test|lan-test|local-|public-|ray-
 
 function identityKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function rosterIdentityKey(player) {
+  return identityKey(player?.handle || player?.name || player?.id);
+}
+
+function betterRosterRecord(current, next) {
+  if (!current) return next;
+  if (!next) return current;
+  const currentActive = Boolean(current.active || current.available);
+  const nextActive = Boolean(next.active || next.available);
+  if (nextActive !== currentActive) return nextActive ? next : current;
+  const currentSeen = Number(current.last_seen || 0);
+  const nextSeen = Number(next.last_seen || 0);
+  if (nextSeen !== currentSeen) return nextSeen > currentSeen ? next : current;
+  if (String(next.name || "").length < String(current.name || "").length) return next;
+  return current;
 }
 
 const PIECES = {
@@ -101,7 +118,6 @@ let handleSyncTimer = null;
 let trainerTimer = null;
 let trainerLine = new Chess();
 let knownPlayers = [
-  { id: "raypalmer", name: "RayPalmer", active: false, seeded: true },
   { id: "rick", name: "rick", active: false, seeded: true },
   { id: "queenorma", name: "QueeNorma", active: false, seeded: true },
 ];
@@ -405,8 +421,13 @@ function mergePlayers(players = []) {
     && !selfKeys.has(identityKey(player.id))
     && !selfKeys.has(identityKey(player.name))
   ));
-  const map = new Map(visibleKnownPlayers.map(player => [player.id, player]));
-  map.set(self.id, { ...(map.get(self.id) || {}), ...self });
+  const map = new Map();
+  const remember = player => {
+    const key = rosterIdentityKey(player);
+    if (!key || selfKeys.has(key)) return;
+    map.set(key, betterRosterRecord(map.get(key), player));
+  };
+  for (const player of visibleKnownPlayers) remember(player);
   for (const raw of players) {
     const player = normalizePlayer(raw, { includeSelf: true });
     if (!player) continue;
@@ -417,10 +438,9 @@ function mergePlayers(players = []) {
       || selfKeys.has(identityKey(player.id))
       || selfKeys.has(identityKey(player.name))
     ) continue;
-    map.set(player.id, { ...(map.get(player.id) || {}), ...player });
+    remember(player);
   }
-  map.set(self.id, { ...(map.get(self.id) || {}), ...self });
-  knownPlayers = [...map.values()].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
+  knownPlayers = [self, ...map.values()].sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
   if (selectedPlayerId && !knownPlayers.some(player => player.id === selectedPlayerId)) selectedPlayerId = "";
 }
 
@@ -1463,11 +1483,7 @@ async function boot() {
   mergePlayers([]);
   render();
   loadPhoneMemory();
-  if (!onlineNameInput.value && localLearningCount(phoneMemory) > 0) {
-    onlineNameInput.value = "RayPalmer";
-    multiplayer.setName(onlineNameInput.value);
-    mergePlayers([]);
-  } else if (onlineNameInput.value) {
+  if (onlineNameInput.value) {
     multiplayer.setName(onlineNameInput.value);
   }
   const restored = loadSavedState();
@@ -1561,8 +1577,8 @@ onlineNameInput.addEventListener("blur", () => syncOnlineName({ heartbeat: true 
 onlineNameInput.addEventListener("keydown", event => {
   if (event.key === "Enter") {
     event.preventDefault();
+    window.clearTimeout(handleSyncTimer);
     syncOnlineName({ heartbeat: true });
-    onlineNameInput.blur();
     render();
   }
 });

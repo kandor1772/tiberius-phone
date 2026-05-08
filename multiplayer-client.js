@@ -8,7 +8,6 @@ const PRESENCE_INTERVAL_MS = 15_000;
 const RELAY_TIMEOUT_MS = 8_000;
 const DEFAULT_PLAYER_NAME = "";
 const FALLBACK_PLAYERS = [
-  { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true },
   { id: "rick", name: "rick", active: false, available: false, seeded: true },
   { id: "queenorma", name: "QueeNorma", active: false, available: false, seeded: true },
 ];
@@ -27,6 +26,23 @@ function identityKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function rosterIdentityKey(player) {
+  return identityKey(player?.handle || player?.name || player?.id);
+}
+
+function betterRosterRecord(current, next) {
+  if (!current) return next;
+  if (!next) return current;
+  const currentActive = Boolean(current.active || current.available);
+  const nextActive = Boolean(next.active || next.available);
+  if (nextActive !== currentActive) return nextActive ? next : current;
+  const currentSeen = Number(current.last_seen || 0);
+  const nextSeen = Number(next.last_seen || 0);
+  if (nextSeen !== currentSeen) return nextSeen > currentSeen ? next : current;
+  if (String(next.name || "").length < String(current.name || "").length) return next;
+  return current;
+}
+
 function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
   const rawName = String(player?.name || "").trim().slice(0, 32);
   const savedId = String(player?.id || "").trim();
@@ -39,12 +55,13 @@ function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
   const deviceId = player?.device_id || player?.deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const aliases = new Set(preserveAliases && Array.isArray(player?.aliases) ? player.aliases : []);
   if (preserveAliases && player?.id && !isAnonIdentity(player.id) && player.id !== id) aliases.add(player.id);
+  const ownKeys = new Set([id, name, handle].map(identityKey).filter(Boolean));
   return {
     id,
     name,
     handle: handle || "",
     device_id: deviceId,
-    aliases: [...aliases].slice(0, 8),
+    aliases: [...aliases].filter(alias => !ownKeys.has(identityKey(alias))).slice(0, 8),
   };
 }
 
@@ -99,7 +116,14 @@ function readRoster() {
 
 function writeRoster(roster) {
   try {
-    localStorage.setItem(ROSTER_KEY, JSON.stringify(roster));
+    const deduped = {};
+    for (const player of Object.values(roster || {})) {
+      const key = rosterIdentityKey(player);
+      if (!key || isAnonIdentity(key)) continue;
+      const id = canonicalHandle(player?.handle || player?.name || player?.id) || key;
+      deduped[id] = betterRosterRecord(deduped[id], { ...player, id });
+    }
+    localStorage.setItem(ROSTER_KEY, JSON.stringify(deduped));
   } catch (_err) {}
 }
 
@@ -128,7 +152,8 @@ export class MultiplayerClient {
     this.transport = "";
     this.incomingById = new Map();
     this.gamesById = new Map();
-    this.rosterById = new Map(FALLBACK_PLAYERS.map(player => [player.id, player]));
+    this.rosterById = new Map();
+    for (const player of FALLBACK_PLAYERS) this.rememberRosterPlayer(player);
     for (const player of Object.values(readRoster())) this.rememberRosterPlayer(player);
     this.lastPresenceAt = 0;
   }
@@ -226,7 +251,7 @@ export class MultiplayerClient {
     if (!id || !name || isAnonIdentity(id) || isAnonIdentity(name)) return;
     const lastSeen = Number(player.last_seen || Date.now());
     const active = Date.now() - lastSeen <= ROSTER_STALE_MS;
-    this.rosterById.set(id, {
+    const record = {
       id,
       name,
       handle: canonicalHandle(player?.handle || name) || id,
@@ -234,13 +259,18 @@ export class MultiplayerClient {
       available: active,
       last_seen: lastSeen,
       public_roster: true,
-    });
+      seeded: Boolean(player.seeded),
+    };
+    const key = rosterIdentityKey(record);
+    const existingKey = [...this.rosterById.entries()]
+      .find(([existingId, existingPlayer]) => identityKey(existingId) === key || rosterIdentityKey(existingPlayer) === key)?.[0];
+    this.rosterById.set(existingKey || record.id, betterRosterRecord(existingKey ? this.rosterById.get(existingKey) : null, record));
   }
 
   rosterPlayers() {
     const now = Date.now();
     const saved = {};
-    const players = [];
+    const byPerson = new Map();
     for (const [id, player] of this.rosterById.entries()) {
       if (isAnonIdentity(id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) continue;
       const lastSeen = Number(player.last_seen || 0);
@@ -248,11 +278,12 @@ export class MultiplayerClient {
       const self = id === this.player.id || id === this.player.handle;
       const active = self || now - lastSeen <= ROSTER_STALE_MS;
       const record = { ...player, active, available: active };
-      players.push(record);
+      const key = rosterIdentityKey(record);
+      byPerson.set(key, betterRosterRecord(byPerson.get(key), record));
       if (!seeded && now - lastSeen <= 30 * 60_000) saved[id] = record;
     }
     writeRoster(saved);
-    return players;
+    return [...byPerson.values()];
   }
 
   topicFor(id) {
