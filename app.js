@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v24";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v25";
 
-const ASSET_BUILD_ID = "authoritative-relay-roster-v24";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v25";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v90-pc-board-fit";
+const CURRENT_CACHE = "tiberius-phone-v91-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 
@@ -46,6 +46,15 @@ const SOLUTION_TARGETS = {
 };
 const TEST_PROFILE_PATTERN = /^(anon(?:-|$)|cf-test|lan-test|local-|public-|ray-(?:test|lan|cf|clean|move|win)|norma-(?:test|lan|cf|clean|move|win)|codex-smoke)/i;
 
+function isAnonIdentity(value) {
+  const text = String(value || "").trim().toLowerCase();
+  return text === "anon" || text.startsWith("anon-");
+}
+
+function firstNamedIdentity(...values) {
+  return values.map(value => String(value || "").trim()).find(value => value && !isAnonIdentity(value)) || "";
+}
+
 function identityKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -77,7 +86,7 @@ function rosterRecordActive(player) {
 }
 
 function rosterIdentityKey(player) {
-  const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
+  const personKey = canonicalRosterKey(firstNamedIdentity(player?.handle, player?.name, player?.id));
   if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}`;
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
@@ -456,20 +465,24 @@ function currentPlayerRecord() {
   const selfKeys = new Set([
     String(multiplayer.player.device_id || "").trim(),
     String(multiplayer.player.id || "").trim(),
-    String(multiplayer.player.handle || "").trim(),
-    String(multiplayer.player.name || "").trim(),
+    firstNamedIdentity(multiplayer.player.handle),
+    firstNamedIdentity(multiplayer.player.name),
   ].filter(Boolean));
   const matched = knownPlayers.find(player => (
     selfKeys.has(String(player.device_id || player.deviceId || "").trim())
     || selfKeys.has(String(playerSelectionKey(player)).trim())
     || selfKeys.has(String(player.id || "").trim())
-    || selfKeys.has(String(player.name || "").trim())
-    || selfKeys.has(String(player.handle || "").trim())
+    || selfKeys.has(firstNamedIdentity(player.name))
+    || selfKeys.has(firstNamedIdentity(player.handle))
   ));
+  const selfName = canonicalDisplayName(
+    firstNamedIdentity(matched?.name, matched?.handle, multiplayer.player.name, multiplayer.player.handle),
+    firstNamedIdentity(matched?.name, matched?.handle, multiplayer.player.name, multiplayer.player.handle, "you")
+  );
   return {
     id: matched?.id || multiplayer.player.id,
-    name: matched?.name || matched?.handle || multiplayer.player.name || multiplayer.player.handle || "you",
-    handle: matched?.handle || multiplayer.player.handle || "",
+    name: selfName,
+    handle: firstNamedIdentity(matched?.handle, multiplayer.player.handle),
     device_id: matched?.device_id || multiplayer.player.device_id || "",
     active: true,
     available: true,
@@ -484,8 +497,8 @@ function playerSelectionKey(player) {
 function normalizePlayer(player, { includeSelf = false } = {}) {
   let id = String(player.id || player.name || "").trim();
   if (!id || (!includeSelf && id === multiplayer.player.id)) return null;
-  let name = sanitizeDisplayName(player.name || player.handle || "", DEFAULT_PLAYER_NAME);
-  let handle = sanitizeDisplayName(player.handle || name, name);
+  let name = sanitizeDisplayName(firstNamedIdentity(player.name, player.handle), DEFAULT_PLAYER_NAME);
+  let handle = sanitizeDisplayName(firstNamedIdentity(player.handle, name), name);
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
   const personKey = canonicalRosterKey(handle || name || id);
   if (PERSON_ROSTER_KEYS.has(personKey)) {

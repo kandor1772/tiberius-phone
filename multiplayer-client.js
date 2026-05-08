@@ -52,6 +52,7 @@ function sanitizeDisplayName(value, fallback = DEFAULT_PLAYER_NAME) {
 }
 
 function canonicalHandle(name) {
+  if (!String(name || "").trim()) return "";
   const handle = safeTopicPart(name).replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
   return handle.length >= 2 ? handle : "";
 }
@@ -59,6 +60,10 @@ function canonicalHandle(name) {
 function isAnonIdentity(value) {
   const text = String(value || "").trim().toLowerCase();
   return text === "anon" || text.startsWith("anon-");
+}
+
+function firstNamedIdentity(...values) {
+  return values.map(value => String(value || "").trim()).find(value => value && !isAnonIdentity(value)) || "";
 }
 
 function identityKey(value) {
@@ -92,7 +97,7 @@ function rosterRecordActive(player) {
 }
 
 function rosterIdentityKey(player) {
-  const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
+  const personKey = canonicalRosterKey(firstNamedIdentity(player?.handle, player?.name, player?.id));
   if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}`;
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
@@ -116,7 +121,7 @@ function betterRosterRecord(current, next) {
 }
 
 function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
-  const rawName = sanitizeDisplayName(player?.name || player?.handle, DEFAULT_PLAYER_NAME);
+  const rawName = sanitizeDisplayName(firstNamedIdentity(player?.name, player?.handle), DEFAULT_PLAYER_NAME);
   const fallbackName = sanitizeDisplayName("", DEFAULT_PLAYER_NAME);
   let name = rawName && !isAnonIdentity(rawName)
     ? rawName
@@ -328,7 +333,14 @@ export class MultiplayerClient {
         this.lastError = "";
         const data = await response.json().catch(() => ({}));
         if (data?.self) {
-          this.player = normalizePlayerIdentity({ ...this.player, ...data.self, platform: this.player.platform }, { preserveAliases: false });
+          const serverName = firstNamedIdentity(data.self.name, data.self.handle);
+          this.player = normalizePlayerIdentity({
+            ...this.player,
+            ...data.self,
+            name: serverName || this.player.name,
+            handle: serverName ? data.self.handle : this.player.handle,
+            platform: this.player.platform,
+          }, { preserveAliases: false });
           try {
             localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
           } catch (_err) {}
@@ -352,11 +364,10 @@ export class MultiplayerClient {
   }
 
   rememberRosterPlayer(player) {
-    if (isAnonIdentity(player?.id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) return;
-    let name = sanitizeDisplayName(player?.name || player?.handle || "", DEFAULT_PLAYER_NAME);
+    let name = sanitizeDisplayName(firstNamedIdentity(player?.name, player?.handle), DEFAULT_PLAYER_NAME);
     if (!name) return;
-    let id = canonicalHandle(player?.id || player?.device_id || player?.deviceId || player?.handle || name);
-    const personKey = canonicalRosterKey(player?.handle || name || id);
+    let id = canonicalHandle(firstNamedIdentity(player?.id, player?.device_id, player?.deviceId, player?.handle, name));
+    const personKey = canonicalRosterKey(firstNamedIdentity(player?.handle, name, id));
     if (PERSON_ROSTER_KEYS.has(personKey)) {
       id = personKey;
       name = canonicalDisplayName(personKey, name);
@@ -418,7 +429,7 @@ export class MultiplayerClient {
       this.player.handle,
       this.player.name,
       ...(this.player.aliases || []),
-    ]).map(id => this.topicFor(id));
+    ].filter(value => !isAnonIdentity(value))).map(id => this.topicFor(id));
   }
 
   async publishTopic(topic, message) {
