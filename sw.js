@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v80-pc-board-fit";
+const CACHE = "tiberius-phone-v81-pc-board-fit";
 const ASSETS = [
   "./",
   "index.html",

@@ -83,7 +83,7 @@ function betterRosterRecord(current, next) {
 }
 
 function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
-  const rawName = sanitizeDisplayName(player?.name || player?.handle, DEFAULT_PLAYER_NAME);
+  const rawName = sanitizeDisplayName(player?.handle || player?.name, DEFAULT_PLAYER_NAME);
   const fallbackName = sanitizeDisplayName("", DEFAULT_PLAYER_NAME);
   let name = rawName && !isAnonIdentity(rawName)
     ? rawName
@@ -301,7 +301,7 @@ export class MultiplayerClient {
 
   rememberRosterPlayer(player) {
     if (isAnonIdentity(player?.id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) return;
-    let name = sanitizeDisplayName(player?.name || player?.handle || "", DEFAULT_PLAYER_NAME);
+    let name = sanitizeDisplayName(player?.handle || player?.name || "", DEFAULT_PLAYER_NAME);
     if (!name) return;
     let id = canonicalHandle(player?.id || player?.device_id || player?.deviceId || player?.handle || name);
     const personKey = canonicalRosterKey(player?.handle || name || id);

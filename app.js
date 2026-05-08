@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v14";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v15";
 
 const BUILD_ID = "authoritative-relay";
-const ASSET_BUILD_ID = "authoritative-relay-roster-v14";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v15";
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v80-pc-board-fit";
+const CURRENT_CACHE = "tiberius-phone-v81-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
 
 function detectDefaultPlayerName() {
@@ -437,7 +437,7 @@ function playerSelectionKey(player) {
 function normalizePlayer(player, { includeSelf = false } = {}) {
   let id = String(player.id || player.name || "").trim();
   if (!id || (!includeSelf && id === multiplayer.player.id)) return null;
-  let name = sanitizeDisplayName(player.name || player.handle || "", DEFAULT_PLAYER_NAME);
+  let name = sanitizeDisplayName(player.handle || player.name || "", DEFAULT_PLAYER_NAME);
   let handle = sanitizeDisplayName(player.handle || name, name);
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
   const personKey = canonicalRosterKey(handle || name || id);

@@ -193,7 +193,7 @@ class RelayState:
                 ),
                 None,
             )
-        desired_name = player.get("name") or player.get("handle") or (existing.get("name") if existing else "") or default_name_for_platform(platform)
+        desired_name = player.get("handle") or player.get("name") or (existing.get("name") if existing else "") or default_name_for_platform(platform)
         name = self._unique_display_name(desired_name, device_id, existing, platform)
         handle = sanitize_display_name(player.get("handle") or name or player_id, name)
         incoming_key = self._roster_key_for_record({
