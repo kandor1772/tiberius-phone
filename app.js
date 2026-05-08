@@ -1,10 +1,10 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v6";
+import { MultiplayerClient } from "./multiplayer-client.js?v=ntfy-progress-fallback-v1";
 
 const BUILD_ID = "always-on-backend";
-const ASSET_BUILD_ID = "always-on-backend-v1";
+const ASSET_BUILD_ID = "ntfy-progress-fallback-v1";
 const CACHE_PREFIX = "tiberius-phone-";
 const CURRENT_CACHE = `tiberius-phone-v71-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";

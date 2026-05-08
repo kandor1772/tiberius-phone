@@ -87,3 +87,7 @@ This repository is configured for GitHub Pages from `main` at the repository roo
 Always-on sync:
 
 GitHub Pages keeps the app online. The live dialogue/progress path needs the backend in `multiplayer_relay.py` running behind DuckDNS or another cloud URL. DuckDNS alone is not a server; it must point to an always-on backend.
+
+Fallback relay:
+
+If DuckDNS is unavailable, active browsers fall back to public `ntfy.sh` topics for presence, progress counters, challenges, moves, and forfeits. This lets active clients keep talking while both computers are off, but it is not permanent Tiberius core storage.

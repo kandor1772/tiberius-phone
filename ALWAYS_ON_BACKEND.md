@@ -41,6 +41,19 @@ https://eltiburon.duckdns.org/tiberius-memory-lite.json
 
 Both computers can then be off. The GitHub Pages app stays online, and sync/progress continue through the cloud backend.
 
+## No-Account Fallback
+
+The browser client also has a public `ntfy.sh` fallback. If DuckDNS is unavailable, active browsers publish and poll:
+
+- presence
+- shared progress counters
+- challenges
+- game starts
+- moves
+- forfeits
+
+This keeps active clients in dialogue without either computer being on. It is not a durable database: messages are retained by the public relay for a limited time, and the authoritative long-term backend should still be the DuckDNS/cloud service above.
+
 ## One-Command Ubuntu VM Install
 
 On a small always-on Ubuntu VM, run:

@@ -8,6 +8,8 @@ https://eltiburon.duckdns.org/api/multiplayer
 
 The browser client is already prepared for this relay. The same backend also accepts `POST /api/phone-sync` and serves `GET /tiberius-memory-lite.json`, so phone/browser learning, multiplayer state, and the progress bar can stay in dialogue through one always-on service. Until the endpoint exists, the online panel stays safe: it shows relay unavailable, keeps the chess engine working, and does not crash the app.
 
+If the DuckDNS backend is down, the client falls back to public `ntfy.sh` topics for active-client presence, progress sharing, challenges, moves, and forfeits. That fallback keeps active browsers connected without a server account, but it should be treated as transient relay traffic rather than permanent Tiberius core storage.
+
 ## Availability Rule
 
 The phone advertises a player as available only while their local board is active:
