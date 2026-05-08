@@ -1,14 +1,18 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=max-stockfish-training-v32";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=surface-pure-roster-v31";
+import { MultiplayerClient } from "./multiplayer-client.js?v=max-stockfish-training-v32";
 
-const ASSET_BUILD_ID = "surface-pure-roster-v31";
+const ASSET_BUILD_ID = "max-stockfish-training-v32";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v97-surface-pure-roster";
+const CURRENT_CACHE = "tiberius-phone-v98-max-stockfish-training";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
+const STOCKFISH_ANCHOR_DEPTH = 20;
+const STOCKFISH_TRAINING_DEPTH = 20;
+const TRAINING_LOOP_DELAY_MS = 250;
+const TRAINING_RETRY_DELAY_MS = 1000;
 
 function detectDefaultPlayerName() {
   const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
@@ -212,6 +216,7 @@ let fastHeartbeatUntil = 0;
 let heartbeatTimer = null;
 let handleSyncTimer = null;
 let trainerTimer = null;
+let trainerRunning = false;
 let trainerLine = new Chess();
 let knownPlayers = [
   { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true },
@@ -1403,17 +1408,15 @@ function completeGameLearning(force = false) {
 }
 
 async function backgroundTrainingStep() {
-  if (!stockfishReady || engineThinking || stockfish.isBusy()) return;
-  if (gameActive && !isOnlineGame()) return;
-  if (document.visibilityState === "hidden") return;
+  if (!stockfishReady || engineThinking || stockfish.isBusy()) return false;
   if (trainerLine.isGameOver() || trainerLine.history().length > 80) trainerLine = new Chess();
   const board = new Chess(trainerLine.fen());
-  const result = await stockfish.bestMove(board.fen(), { depth: 8 });
+  const result = await stockfish.bestMove(board.fen(), { depth: STOCKFISH_TRAINING_DEPTH });
   const best = result?.best || "";
   const move = board.moves({ verbose: true }).find(item => uci(item) === best);
   if (!move) {
     trainerLine = new Chess();
-    return;
+    return false;
   }
   const overlayChoice = overlay.chooseMove(board, best);
   applySuccessfulTrainingMove(board, move, "stockfish");
@@ -1433,14 +1436,19 @@ async function backgroundTrainingStep() {
     overlay_move: overlayChoice ? uci(overlayChoice.move) : "",
     agreement: Boolean(overlayChoice && uci(overlayChoice.move) === best),
   });
+  return true;
 }
 
 function startBackgroundTraining() {
-  window.clearInterval(trainerTimer);
-  trainerTimer = window.setInterval(() => {
-    backgroundTrainingStep().catch(() => {});
-  }, 12000);
-  backgroundTrainingStep().catch(() => {});
+  if (trainerRunning) return;
+  trainerRunning = true;
+  const run = async () => {
+    if (!trainerRunning) return;
+    const trained = await backgroundTrainingStep().catch(() => false);
+    trainerTimer = window.setTimeout(run, trained ? TRAINING_LOOP_DELAY_MS : TRAINING_RETRY_DELAY_MS);
+  };
+  window.clearTimeout(trainerTimer);
+  trainerTimer = window.setTimeout(run, 0);
 }
 
 function onSquare(square) {
@@ -1560,7 +1568,7 @@ async function engineMove() {
   }
   let stockfishBest = null;
   if (ready) {
-    const result = await stockfish.bestMove(chess.fen(), { depth: 10 });
+    const result = await stockfish.bestMove(chess.fen(), { depth: STOCKFISH_ANCHOR_DEPTH });
     stockfishBest = result?.best || null;
   }
   if (serial !== gameSerial || isHumanTurn() || !gameActive || gameResult) {

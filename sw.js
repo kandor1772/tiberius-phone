@@ -1,13 +1,13 @@
-const CACHE = "tiberius-phone-v97-surface-pure-roster";
-const APP_ENTRY = "./?v=surface-pure-roster-v31";
+const CACHE = "tiberius-phone-v98-max-stockfish-training";
+const APP_ENTRY = "./?v=max-stockfish-training-v32";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=surface-pure-roster-v31",
+  "index.html?v=max-stockfish-training-v32",
   "style.css",
-  "app.js?v=surface-pure-roster-v31",
-  "multiplayer-client.js?v=surface-pure-roster-v31",
+  "app.js?v=max-stockfish-training-v32",
+  "multiplayer-client.js?v=max-stockfish-training-v32",
   "tiberius-overlay.js",
-  "stockfish-adapter.js",
+  "stockfish-adapter.js?v=max-stockfish-training-v32",
   "memory-sources.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
@@ -16,7 +16,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=surface-pure-roster-v31",
+  "manifest.webmanifest?v=max-stockfish-training-v32",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"

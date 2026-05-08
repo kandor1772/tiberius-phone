@@ -15,6 +15,8 @@ What runs on the phone:
 - Tiberius overlay logic ported to JavaScript
 - Bundled Stockfish 18 lite single-threaded WASM worker
 - Stockfish full-strength options: `UCI_LimitStrength=false`, `Skill Level=20`
+- Stockfish anchor and background training searches run at depth 20 while the app is open
+- Background training loops continuously after Stockfish boots, subject to browser/OS throttling
 - Full packaged Tiberius memory loaded from `tiberius-memory-full.json.gz`
 - Lite memory fallback if the browser cannot load the compressed full pack
 - Optional live memory sources from `memory-sources.json`

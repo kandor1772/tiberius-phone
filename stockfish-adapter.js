@@ -3,7 +3,7 @@ export class StockfishAdapter {
     this.worker = null;
     this.ready = false;
     this.pending = [];
-    this.depth = 10;
+    this.depth = 20;
   }
 
   async boot() {
@@ -17,6 +17,8 @@ export class StockfishAdapter {
     this.send("uci");
     this.send("setoption name UCI_LimitStrength value false");
     this.send("setoption name Skill Level value 20");
+    this.send("setoption name Hash value 128");
+    this.send("setoption name Threads value 1");
     this.send("isready");
     const ok = await new Promise(resolve => {
       const started = Date.now();

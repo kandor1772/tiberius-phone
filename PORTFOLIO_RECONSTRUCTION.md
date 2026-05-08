@@ -129,6 +129,10 @@ Runtime UCI settings:
 ```text
 UCI_LimitStrength=false
 Skill Level=20
+Hash=128
+Threads=1
+Anchor depth=20
+Background training depth=20 continuous loop while app is open
 ```
 
 ## DuckDNS Link And Sync Truth
