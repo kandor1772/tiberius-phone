@@ -1115,7 +1115,6 @@ async function heartbeatOnline() {
   if (heartbeatInFlight) return;
   heartbeatInFlight = true;
   try {
-    multiplayer.setName(onlineNameInput.value);
     const data = await multiplayer.heartbeat({ ...gameSnapshot(), progress: progressPayload() });
     handleOnlineResponse(data);
   } finally {
@@ -1172,7 +1171,6 @@ async function sendChallenge(random, target = "") {
 }
 
 function playHuman() {
-  syncOnlineName();
   if (isOnlineGame()) {
     onlineNotice = "Forfeiting current human game before sending a new invite.";
   }
@@ -1526,9 +1524,6 @@ async function boot() {
   mergePlayers([]);
   render();
   loadPhoneMemory();
-  if (onlineNameInput.value) {
-    multiplayer.setName(onlineNameInput.value);
-  }
   const restored = loadSavedState();
   if (!restored) {
     humanColor = "b";
@@ -1612,15 +1607,13 @@ returnGameBtn.addEventListener("click", () => {
   if (game) loadGameRecord(game);
 });
 onlineNameInput.addEventListener("change", () => {
-  syncOnlineName({ heartbeat: true });
   render();
 });
-onlineNameInput.addEventListener("input", scheduleHandleSync);
-onlineNameInput.addEventListener("blur", () => syncOnlineName({ heartbeat: true }));
+onlineNameInput.addEventListener("input", () => render());
+onlineNameInput.addEventListener("blur", () => render());
 onlineNameInput.addEventListener("keydown", event => {
   if (event.key === "Enter") {
     event.preventDefault();
-    window.clearTimeout(handleSyncTimer);
     syncOnlineName({ heartbeat: true });
     render();
   }
