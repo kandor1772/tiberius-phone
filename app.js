@@ -4,8 +4,9 @@ import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from ".
 import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v5";
 
 const BUILD_ID = "authoritative-relay";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v5";
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = `tiberius-phone-v66-${BUILD_ID}`;
+const CURRENT_CACHE = `tiberius-phone-v70-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
 const SOLUTION_TARGETS = {
@@ -1635,7 +1636,7 @@ if ("serviceWorker" in navigator) {
     refreshingForUpdate = true;
     window.location.reload();
   });
-  navigator.serviceWorker.register(`sw.js?v=${BUILD_ID}`).then(registration => {
+  navigator.serviceWorker.register(`sw.js?v=${ASSET_BUILD_ID}`).then(registration => {
     registration.update().catch(() => {});
   }).catch(() => {});
 }
