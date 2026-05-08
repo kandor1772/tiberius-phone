@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v5";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v6";
 
 const BUILD_ID = "authoritative-relay";
-const ASSET_BUILD_ID = "authoritative-relay-roster-v5";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v6";
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = `tiberius-phone-v70-${BUILD_ID}`;
+const CURRENT_CACHE = `tiberius-phone-v71-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
 const SOLUTION_TARGETS = {
@@ -30,6 +30,7 @@ function canonicalRosterKey(value) {
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
   if (personKey === "mork") return "person:mork";
+  if (personKey === "liamz") return "person:liamz";
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
   return personKey;
@@ -408,17 +409,24 @@ function currentPlayerRecord() {
 }
 
 function normalizePlayer(player, { includeSelf = false } = {}) {
-  const id = String(player.id || player.name || "").trim();
+  let id = String(player.id || player.name || "").trim();
   if (!id || (!includeSelf && id === multiplayer.player.id)) return null;
-  const name = String(player.name || id).trim();
+  let name = String(player.name || id).trim();
+  let handle = String(player.handle || "").trim();
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
+  const personKey = canonicalRosterKey(handle || name || id);
+  if (personKey === "liamz") {
+    id = "liamz";
+    name = "liamz";
+    handle = "liamz";
+  }
   const active = Boolean(player.active || player.available || player.status === "active");
   const seeded = Boolean(player.seeded);
-  if (!active && !seeded) return null;
+  if (!active && !seeded && personKey !== "liamz") return null;
   return {
     id,
     name,
-    handle: String(player.handle || "").trim(),
+    handle,
     device_id: String(player.device_id || player.deviceId || "").trim(),
     active,
     last_seen: player.last_seen || player.updated_at || "",

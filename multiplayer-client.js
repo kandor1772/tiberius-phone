@@ -2,7 +2,7 @@ const PLAYER_KEY = "tiberius-phone-player-v1";
 const NTFY_SEEN_KEY = "tiberius-phone-ntfy-seen-v2";
 const NTFY_BASE = "https://ntfy.sh";
 const NTFY_PREFIX = "tiberius-phone-chess-v2";
-const ROSTER_KEY = "tiberius-phone-public-roster-v5";
+const ROSTER_KEY = "tiberius-phone-public-roster-v6";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
 const RELAY_TIMEOUT_MS = 8_000;
@@ -35,6 +35,7 @@ function canonicalRosterKey(value) {
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
   if (personKey === "mork") return "person:mork";
+  if (personKey === "liamz") return "person:liamz";
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
   return personKey;
@@ -143,6 +144,7 @@ function clearLegacyRosterStorage() {
     localStorage.removeItem("tiberius-phone-public-roster-v2");
     localStorage.removeItem("tiberius-phone-public-roster-v3");
     localStorage.removeItem("tiberius-phone-public-roster-v4");
+    localStorage.removeItem("tiberius-phone-public-roster-v5");
   } catch (_err) {}
 }
 
@@ -264,6 +266,11 @@ export class MultiplayerClient {
     if (isAnonIdentity(player?.id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) return;
     let id = canonicalHandle(player?.id || player?.name || player?.handle);
     let name = String(player?.name || player?.handle || id || "").trim().slice(0, 32);
+    const personKey = canonicalRosterKey(player?.handle || name || id);
+    if (personKey === "liamz") {
+      id = "liamz";
+      name = "liamz";
+    }
     if (DEFAULT_PLAYER_NAME && [id, name, player?.handle].some(value => identityKey(value) === identityKey(DEFAULT_PLAYER_NAME))) {
       id = canonicalHandle(DEFAULT_PLAYER_NAME);
       name = DEFAULT_PLAYER_NAME;
@@ -274,7 +281,7 @@ export class MultiplayerClient {
     const record = {
       id,
       name,
-      handle: canonicalHandle(player?.handle || name) || id,
+      handle: personKey === "liamz" ? "liamz" : canonicalHandle(player?.handle || name) || id,
       device_id: String(player?.device_id || player?.deviceId || "").trim(),
       active,
       available: active,
