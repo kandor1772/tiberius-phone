@@ -1,0 +1,17 @@
+services:
+  tiberius-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8776:8776"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8776
+      TIBERIUS_STATE_PATH: /data/tiberius-backend-state.json
+    volumes:
+      - tiberius-backend-data:/data
+    restart: unless-stopped
+
+volumes:
+  tiberius-backend-data:

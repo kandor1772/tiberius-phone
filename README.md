@@ -47,8 +47,9 @@ Game Persistence:
 Multiplayer:
 
 - The static app includes the client-side online play surface and relay calls.
-- Live matchmaking requires a relay at `https://eltiburon.duckdns.org/api/multiplayer`.
+- Live matchmaking requires the always-on backend at `https://eltiburon.duckdns.org/api/multiplayer`.
 - [MULTIPLAYER_RELAY.md](MULTIPLAYER_RELAY.md) documents the endpoint contract and large-traffic guardrails.
+- [ALWAYS_ON_BACKEND.md](ALWAYS_ON_BACKEND.md) documents the combined sync, progress, memory snapshot, and multiplayer backend that should run on a cloud host if both computers may be off.
 
 Bundled engine:
 
@@ -82,3 +83,7 @@ http://127.0.0.1:8088
 Static hosting:
 
 This repository is configured for GitHub Pages from `main` at the repository root. Any static host can serve the same files.
+
+Always-on sync:
+
+GitHub Pages keeps the app online. The live dialogue/progress path needs the backend in `multiplayer_relay.py` running behind DuckDNS or another cloud URL. DuckDNS alone is not a server; it must point to an always-on backend.

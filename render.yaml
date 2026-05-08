@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: tiberius-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8776
+      - key: TIBERIUS_STATE_PATH
+        value: /data/tiberius-backend-state.json
+    disk:
+      name: tiberius-backend-data
+      mountPath: /data
+      sizeGB: 1

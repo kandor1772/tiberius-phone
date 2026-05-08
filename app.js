@@ -3,8 +3,8 @@ import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
 import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v6";
 
-const BUILD_ID = "authoritative-relay";
-const ASSET_BUILD_ID = "authoritative-relay-roster-v6";
+const BUILD_ID = "always-on-backend";
+const ASSET_BUILD_ID = "always-on-backend-v1";
 const CACHE_PREFIX = "tiberius-phone-";
 const CURRENT_CACHE = `tiberius-phone-v71-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
@@ -142,7 +142,6 @@ const SUSPENDED_GAME_KEY = "tiberius-phone-suspended-game-v1";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
 const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 const MULTIPLAYER_ENDPOINTS = [
-  "https://cars-reduced-list-contests.trycloudflare.com",
   "https://eltiburon.duckdns.org/api/multiplayer",
 ];
 const multiplayer = new MultiplayerClient({ endpoints: MULTIPLAYER_ENDPOINTS });
