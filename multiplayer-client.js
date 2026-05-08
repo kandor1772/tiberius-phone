@@ -33,9 +33,11 @@ function canonicalRosterKey(value) {
 }
 
 function rosterIdentityKey(player) {
+  const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
+  if (personKey === "mork") return "person:mork";
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
-  return canonicalRosterKey(player?.handle || player?.name || player?.id);
+  return personKey;
 }
 
 function betterRosterRecord(current, next) {

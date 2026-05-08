@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v2";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v3";
 
 const BUILD_ID = "authoritative-relay";
 const CACHE_PREFIX = "tiberius-phone-";
@@ -27,9 +27,11 @@ function canonicalRosterKey(value) {
 }
 
 function rosterIdentityKey(player) {
+  const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
+  if (personKey === "mork") return "person:mork";
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
-  return canonicalRosterKey(player?.handle || player?.name || player?.id);
+  return personKey;
 }
 
 function betterRosterRecord(current, next) {
