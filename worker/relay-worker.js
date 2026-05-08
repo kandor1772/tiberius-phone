@@ -1,5 +1,7 @@
 const STALE_AFTER_MS = 90_000;
 const CHALLENGE_TTL_MS = 5 * 60_000;
+const PUSH_SUBSCRIPTION_TTL_MS = 45 * 24 * 60 * 60_000;
+const PUSH_TTL_SECONDS = 5 * 60;
 const PERSON_ROSTER_KEYS = new Set(["mork", "liamz", "raypalmer", "queenorma", "rick", "droz", "spock"]);
 const PERSON_DISPLAY_NAMES = {
   mork: "Mork",
@@ -92,6 +94,23 @@ function jsonResponse(data, status = 200) {
   });
 }
 
+function base64UrlEncode(input) {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  return btoa(binary).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
+function base64UrlJson(value) {
+  return base64UrlEncode(new TextEncoder().encode(JSON.stringify(value)));
+}
+
+function pushEndpointKey(subscription) {
+  return String(subscription?.endpoint || "").trim();
+}
+
 function emptyState() {
   return {
     players: [],
@@ -99,6 +118,7 @@ function emptyState() {
     games: {},
     events: [],
     shared_progress: {},
+    push_subscriptions: [],
   };
 }
 
@@ -125,6 +145,7 @@ export class TiberiusRelay {
     this.data.games ||= {};
     this.data.events ||= [];
     this.data.shared_progress ||= {};
+    this.data.push_subscriptions ||= [];
     return this.data;
   }
 
@@ -159,6 +180,45 @@ export class TiberiusRelay {
 
   recordKeys(record) {
     return this.deliveryKeysFor(record.id, record.name, record.handle, record.device_id, ...(record.aliases || []));
+  }
+
+  subscriptionKeys(subscription) {
+    return this.deliveryKeysFor(
+      subscription.player_id,
+      subscription.player_name,
+      subscription.player_handle,
+      subscription.device_id,
+      ...(subscription.aliases || [])
+    );
+  }
+
+  savePushSubscription(record, subscription) {
+    const endpoint = pushEndpointKey(subscription);
+    if (!endpoint) return null;
+    this.data.push_subscriptions ||= [];
+    const item = {
+      endpoint,
+      expirationTime: subscription.expirationTime || null,
+      keys: subscription.keys || {},
+      player_id: record.id || "",
+      player_name: record.name || "",
+      player_handle: record.handle || record.name || record.id || "",
+      device_id: record.device_id || "",
+      surface: String(record.surface || "browser").trim().toLowerCase() || "browser",
+      aliases: Array.isArray(record.aliases) ? record.aliases : [],
+      active: true,
+      last_seen: Date.now(),
+    };
+    const index = this.data.push_subscriptions.findIndex(saved => pushEndpointKey(saved) === endpoint);
+    if (index >= 0) this.data.push_subscriptions[index] = item;
+    else this.data.push_subscriptions.push(item);
+    return item;
+  }
+
+  removePushSubscription(endpoint) {
+    const key = String(endpoint || "").trim();
+    if (!key || !Array.isArray(this.data.push_subscriptions)) return;
+    this.data.push_subscriptions = this.data.push_subscriptions.filter(subscription => pushEndpointKey(subscription) !== key);
   }
 
   findRecordFor(player) {
@@ -214,6 +274,11 @@ export class TiberiusRelay {
       }
     }
     this.data.events = this.data.events.filter(event => Date.now() - Number(event.created_at_ms || 0) <= 30 * 60_000);
+    this.data.push_subscriptions ||= [];
+    this.data.push_subscriptions = this.data.push_subscriptions.filter(subscription => (
+      pushEndpointKey(subscription)
+      && Date.now() - Number(subscription.last_seen || 0) <= PUSH_SUBSCRIPTION_TTL_MS
+    ));
   }
 
   touchPlayer(player, rename = false) {
@@ -330,6 +395,82 @@ export class TiberiusRelay {
     this.data.events.push({ targetKeys, event, created_at_ms: Date.now() });
   }
 
+  async vapidToken(endpoint) {
+    const privateJwkText = this.env.VAPID_PRIVATE_JWK;
+    const publicKey = this.env.VAPID_PUBLIC_KEY;
+    if (!privateJwkText || !publicKey) return "";
+    const privateJwk = JSON.parse(privateJwkText);
+    privateJwk.ext = true;
+    privateJwk.key_ops = ["sign"];
+    const key = await crypto.subtle.importKey(
+      "jwk",
+      privateJwk,
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["sign"]
+    );
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const header = base64UrlJson({ typ: "JWT", alg: "ES256" });
+    const payload = base64UrlJson({
+      aud: new URL(endpoint).origin,
+      exp: issuedAt + 12 * 60 * 60,
+      sub: this.env.VAPID_SUBJECT || "mailto:q79qmzkmk4@privaterelay.appleid.com",
+    });
+    const token = `${header}.${payload}`;
+    const signature = await crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" },
+      key,
+      new TextEncoder().encode(token)
+    );
+    return `${token}.${base64UrlEncode(signature)}`;
+  }
+
+  async sendPush(subscription) {
+    const endpoint = pushEndpointKey(subscription);
+    if (!endpoint || !this.env.VAPID_PUBLIC_KEY || !this.env.VAPID_PRIVATE_JWK) return false;
+    const token = await this.vapidToken(endpoint);
+    if (!token) return false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        TTL: String(PUSH_TTL_SECONDS),
+        Urgency: "high",
+        Authorization: `vapid t=${token}, k=${this.env.VAPID_PUBLIC_KEY}`,
+      },
+      signal: controller.signal,
+    }).catch(() => null);
+    clearTimeout(timeout);
+    if (response && (response.status === 404 || response.status === 410)) this.removePushSubscription(endpoint);
+    return Boolean(response?.ok);
+  }
+
+  targetPushSubscriptions(targetKeys, targetSurface, sender) {
+    this.data.push_subscriptions ||= [];
+    const surface = String(targetSurface || "browser").trim().toLowerCase() || "browser";
+    return this.data.push_subscriptions.filter(subscription => {
+      if (String(subscription.surface || "browser").trim().toLowerCase() !== surface) return false;
+      if (sender?.device_id && subscription.device_id && subscription.device_id === sender.device_id) return false;
+      const keys = this.subscriptionKeys(subscription);
+      return [...targetKeys].some(key => keys.has(key));
+    });
+  }
+
+  async notifyChallengeTargets(challenge, targetRecord, sender) {
+    const targetKeys = this.deliveryKeysFor(
+      challenge.target,
+      challenge.targetName,
+      challenge.targetHandle,
+      challenge.targetDevice,
+      ...(challenge.targetKeys || []),
+      ...(targetRecord ? [...this.recordKeys(targetRecord)] : [])
+    );
+    const subscriptions = this.targetPushSubscriptions(targetKeys, challenge.targetSurface, sender);
+    if (!subscriptions.length) return;
+    await Promise.allSettled(subscriptions.map(subscription => this.sendPush(subscription)));
+  }
+
   mergeProgress(progress = {}) {
     for (const key of [
       "successful_moves_learned",
@@ -351,6 +492,7 @@ export class TiberiusRelay {
     const payload = body.payload || {};
     const rename = Boolean(payload.rename);
     if (path.endsWith("/heartbeat")) return this.heartbeat(player, payload, rename);
+    if (path.endsWith("/push/subscribe")) return this.subscribePush(player, payload, rename);
     if (path.endsWith("/challenge/respond")) return this.respond(player, payload, rename);
     if (path.endsWith("/challenge")) return this.challenge(player, payload, rename);
     if (path.endsWith("/game/move")) return this.move(player, payload, rename);
@@ -360,6 +502,7 @@ export class TiberiusRelay {
 
   heartbeat(player, payload, rename) {
     const record = this.touchPlayer(player, rename);
+    if (payload.pushSubscription) this.savePushSubscription(record, payload.pushSubscription);
     this.mergeProgress(player.progress || payload.progress || {});
     return jsonResponse({
       ok: true,
@@ -372,7 +515,21 @@ export class TiberiusRelay {
     });
   }
 
-  challenge(player, payload, rename) {
+  subscribePush(player, payload, rename) {
+    const record = this.touchPlayer(player, rename);
+    const subscription = this.savePushSubscription(record, payload.subscription);
+    return jsonResponse({
+      ok: Boolean(subscription),
+      players: this.roster(record.surface),
+      incoming: this.incomingFor(record),
+      events: this.popEventsFor(record),
+      progress: this.data.shared_progress,
+      self: publicPlayer(record),
+      message: subscription ? "Notifications connected." : "No notification subscription was saved.",
+    }, subscription ? 200 : 400);
+  }
+
+  async challenge(player, payload, rename) {
     const sender = this.touchPlayer(player, rename);
     let target = String(payload.target || "").trim();
     let targetName = String(payload.targetName || target).trim();
@@ -423,6 +580,7 @@ export class TiberiusRelay {
       created_at_ms: Date.now(),
       status: "pending",
     };
+    await this.notifyChallengeTargets(this.data.challenges[id], targetRecord, sender).catch(() => {});
     return jsonResponse({
       ok: true,
       players: this.roster(sender.surface),

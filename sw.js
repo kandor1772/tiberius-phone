@@ -1,13 +1,13 @@
-const CACHE = "tiberius-phone-v98-max-stockfish-training";
-const APP_ENTRY = "./?v=max-stockfish-training-v32";
+const CACHE = "tiberius-phone-v99-notifications";
+const APP_ENTRY = "./?v=notifications-v33";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=max-stockfish-training-v32",
+  "index.html?v=notifications-v33",
   "style.css",
-  "app.js?v=max-stockfish-training-v32",
-  "multiplayer-client.js?v=max-stockfish-training-v32",
+  "app.js?v=notifications-v33",
+  "multiplayer-client.js?v=notifications-v33",
   "tiberius-overlay.js",
-  "stockfish-adapter.js?v=max-stockfish-training-v32",
+  "stockfish-adapter.js?v=notifications-v33",
   "memory-sources.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
@@ -16,11 +16,15 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=max-stockfish-training-v32",
+  "manifest.webmanifest?v=notifications-v33",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"
 ];
+
+function appUrl() {
+  return new URL(APP_ENTRY, self.location.origin).href;
+}
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
@@ -53,4 +57,39 @@ self.addEventListener("fetch", event => {
       return undefined;
     }))
   );
+});
+
+self.addEventListener("push", event => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch (_err) {
+    payload = {};
+  }
+  const title = payload.title || "Tiberius";
+  const body = payload.body || "New challenge waiting.";
+  event.waitUntil(self.registration.showNotification(title, {
+    body,
+    tag: payload.tag || "tiberius-challenge",
+    renotify: true,
+    icon: "icon.svg",
+    badge: "icon.svg",
+    data: { url: payload.url || appUrl() },
+  }));
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const targetUrl = event.notification?.data?.url || appUrl();
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windows) {
+      if (new URL(client.url).origin === self.location.origin && "focus" in client) {
+        await client.focus();
+        client.postMessage?.({ type: "tiberius-notification-opened" });
+        return;
+      }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
+  })());
 });

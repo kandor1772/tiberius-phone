@@ -4,6 +4,10 @@
   "main": "worker/relay-worker.js",
   "compatibility_date": "2026-05-08",
   "workers_dev": true,
+  "vars": {
+    "VAPID_PUBLIC_KEY": "BEWQk8y8ghPvY1cQb_uEMjPCVG8XgZEBSVb_7KVYatlodTbKoWq41O4rxAAo65NlGqqQSpnMurW-9Y0g_4gogV0",
+    "VAPID_SUBJECT": "mailto:q79qmzkmk4@privaterelay.appleid.com"
+  },
   "durable_objects": {
     "bindings": [
       {

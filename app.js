@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=max-stockfish-training-v32";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=notifications-v33";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=max-stockfish-training-v32";
+import { MultiplayerClient } from "./multiplayer-client.js?v=notifications-v33";
 
-const ASSET_BUILD_ID = "max-stockfish-training-v32";
+const ASSET_BUILD_ID = "notifications-v33";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v98-max-stockfish-training";
+const CURRENT_CACHE = "tiberius-phone-v99-notifications";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
@@ -176,6 +176,7 @@ const syncTextEl = document.getElementById("syncText");
 const onlineNameInput = document.getElementById("onlineNameInput");
 const playerRosterEl = document.getElementById("playerRoster");
 const playHumanBtn = document.getElementById("playHumanBtn");
+const enableNotificationsBtn = document.getElementById("enableNotificationsBtn");
 const inviteOutboxEl = document.getElementById("inviteOutbox");
 const incomingChallengeEl = document.getElementById("incomingChallenge");
 const incomingTextEl = document.getElementById("incomingText");
@@ -218,6 +219,8 @@ let handleSyncTimer = null;
 let trainerTimer = null;
 let trainerRunning = false;
 let trainerLine = new Chess();
+let activePushSubscription = null;
+let notificationSubscriptionPending = false;
 let knownPlayers = [
   { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true },
   { id: "liamz", name: "Liamz", active: false, available: false, seeded: true },
@@ -236,6 +239,7 @@ const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 const MULTIPLAYER_ENDPOINTS = [
   "https://tiberius-phone-relay.q79qmzkmk4.workers.dev",
 ];
+const PUSH_PUBLIC_KEY = "BEWQk8y8ghPvY1cQb_uEMjPCVG8XgZEBSVb_7KVYatlodTbKoWq41O4rxAAo65NlGqqQSpnMurW-9Y0g_4gogV0";
 const multiplayer = new MultiplayerClient({ endpoints: MULTIPLAYER_ENDPOINTS });
 
 function canonicalizeBuildUrl() {
@@ -253,6 +257,102 @@ async function cleanOldAppCaches() {
       .filter(key => key.startsWith(CACHE_PREFIX) && key !== CURRENT_CACHE)
       .map(key => caches.delete(key)));
   } catch (_err) {}
+}
+
+function pushSupported() {
+  return Boolean("serviceWorker" in navigator && "PushManager" in window && "Notification" in window);
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = "=".repeat((4 - value.length % 4) % 4);
+  const base64 = `${value}${padding}`.replace(/-/g, "+").replace(/_/g, "/");
+  const raw = window.atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) output[index] = raw.charCodeAt(index);
+  return output;
+}
+
+function serializePushSubscription(subscription) {
+  if (!subscription) return null;
+  if (typeof subscription.toJSON === "function") return subscription.toJSON();
+  return JSON.parse(JSON.stringify(subscription));
+}
+
+function renderNotificationButton() {
+  if (!enableNotificationsBtn) return;
+  if (!pushSupported()) {
+    enableNotificationsBtn.disabled = true;
+    enableNotificationsBtn.textContent = "Notifications Unavailable";
+    return;
+  }
+  const permission = Notification.permission;
+  const enabled = permission === "granted" && activePushSubscription;
+  enableNotificationsBtn.disabled = notificationSubscriptionPending || permission === "denied" || enabled;
+  enableNotificationsBtn.textContent = notificationSubscriptionPending
+    ? "Enabling..."
+    : enabled ? "Notifications On"
+      : permission === "denied" ? "Notifications Blocked"
+        : permission === "granted" ? "Repair Notifications"
+          : "Enable Notifications";
+}
+
+async function refreshPushSubscription(registration = null) {
+  if (!pushSupported() || Notification.permission !== "granted") {
+    activePushSubscription = null;
+    renderNotificationButton();
+    return null;
+  }
+  const serviceWorkerRegistration = registration || await navigator.serviceWorker.ready;
+  const subscription = await serviceWorkerRegistration.pushManager.getSubscription();
+  activePushSubscription = serializePushSubscription(subscription);
+  renderNotificationButton();
+  if (activePushSubscription) {
+    multiplayer.subscribePush(activePushSubscription).then(data => {
+      if (data?.ok) handleOnlineResponse(data);
+    }).catch(() => {});
+  }
+  return activePushSubscription;
+}
+
+async function enableNotifications() {
+  if (!pushSupported()) {
+    onlineNotice = "Notifications are not available on this device.";
+    render();
+    return;
+  }
+  notificationSubscriptionPending = true;
+  renderNotificationButton();
+  try {
+    const permission = Notification.permission === "default"
+      ? await Notification.requestPermission()
+      : Notification.permission;
+    if (permission !== "granted") {
+      onlineNotice = permission === "denied"
+        ? "Notifications are blocked for this site."
+        : "Notifications were not enabled.";
+      activePushSubscription = null;
+      return;
+    }
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(PUSH_PUBLIC_KEY),
+      });
+    }
+    activePushSubscription = serializePushSubscription(subscription);
+    const data = await multiplayer.subscribePush(activePushSubscription);
+    if (data?.ok) handleOnlineResponse(data);
+    onlineNotice = "Notifications enabled for this app.";
+    startFastHeartbeat(10000);
+  } catch (_err) {
+    onlineNotice = "Notifications could not be enabled.";
+    activePushSubscription = null;
+  } finally {
+    notificationSubscriptionPending = false;
+    render();
+  }
 }
 
 function profileScope() {
@@ -473,6 +573,7 @@ function onlineSummary() {
     : " No player selected: Play Human will look for a random player.";
   const notice = onlineNotice ? ` ${onlineNotice}` : "";
   onlineStatusEl.textContent = `${relay}. ${multiplayer.label()} is ${available}.${handle}${opponent}${selected}${notice}`;
+  renderNotificationButton();
   incomingChallengeEl.classList.toggle("hidden", !incomingChallenge);
   if (incomingChallenge) {
     const from = incomingChallenge.from_name || incomingChallenge.from || "A player";
@@ -1272,7 +1373,9 @@ async function heartbeatOnline() {
   if (heartbeatInFlight) return;
   heartbeatInFlight = true;
   try {
-    const data = await multiplayer.heartbeat({ ...gameSnapshot(), progress: progressPayload() });
+    const state = { ...gameSnapshot(), progress: progressPayload() };
+    if (activePushSubscription) state.pushSubscription = activePushSubscription;
+    const data = await multiplayer.heartbeat(state);
     handleOnlineResponse(data);
     if (document.activeElement !== onlineNameInput) {
       onlineNameInput.value = multiplayer.player.name || "";
@@ -1792,6 +1895,7 @@ onlineNameInput.addEventListener("keydown", event => {
   }
 });
 playHumanBtn.addEventListener("click", playHuman);
+enableNotificationsBtn?.addEventListener("click", enableNotifications);
 acceptChallengeBtn.addEventListener("click", () => answerChallenge(true));
 declineChallengeBtn.addEventListener("click", () => answerChallenge(false));
 
@@ -1819,8 +1923,12 @@ if ("serviceWorker" in navigator) {
     refreshingForUpdate = true;
     window.location.reload();
   });
+  navigator.serviceWorker.addEventListener("message", event => {
+    if (event.data?.type === "tiberius-notification-opened") wakeOnlineRelay();
+  });
   navigator.serviceWorker.register(`sw.js?v=${ASSET_BUILD_ID}`).then(registration => {
     registration.update().catch(() => {});
+    refreshPushSubscription(registration).catch(() => {});
   }).catch(() => {});
 }
 
