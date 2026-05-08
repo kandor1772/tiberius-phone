@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=c0d008d";
+import { MultiplayerClient } from "./multiplayer-client.js?v=c0d008d3";
 
 const BUILD_ID = "c0d008d";
-const ASSET_BUILD_ID = "c0d008d";
+const ASSET_BUILD_ID = "c0d008d3";
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = `tiberius-phone-v86-${BUILD_ID}`;
+const CURRENT_CACHE = `tiberius-phone-v87-${ASSET_BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
 
 function detectDefaultPlayerName() {
