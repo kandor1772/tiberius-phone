@@ -10,6 +10,10 @@ const CURRENT_CACHE = `tiberius-phone-v86-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
 
 function detectDefaultPlayerName() {
+  const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
+  const ua = String(typeof navigator !== "undefined" ? navigator.userAgent || "" : "").toLowerCase();
+  if (/(iphone|ipad|ipod|android|mobile)/i.test(platform) || /(iphone|ipad|ipod|android|mobile)/i.test(ua)) return "RayPalmer";
+  if (/mac/i.test(platform) || /mac os/i.test(ua)) return "Dr. Oz";
   return "Mork";
 }
 
@@ -42,13 +46,21 @@ function identityKey(value) {
 }
 
 function canonicalRosterKey(value) {
-  return "mork";
+  const key = identityKey(value);
+  if (/^mo(?:r(?:k|t(?:i(?:m(?:er?)?)?)?)?)?$/.test(key)) return "mork";
+  if (/^dr(?:\.|\s)?oz$/.test(key) || key === "droz") return "droz";
+  if (key === "raypalmer") return "raypalmer";
+  return key;
 }
 
 function rosterIdentityKey(player) {
+  const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
+  if (personKey === "mork") return "person:mork";
+  if (personKey === "droz") return "person:droz";
+  if (personKey === "raypalmer") return "person:raypalmer";
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
-  return "person:mork";
+  return personKey;
 }
 
 function betterRosterRecord(current, next) {
@@ -424,9 +436,10 @@ function currentPlayerRecord() {
 function normalizePlayer(player, { includeSelf = false } = {}) {
   let id = String(player.id || player.name || "").trim();
   if (!id || (!includeSelf && id === multiplayer.player.id)) return null;
-  if (TEST_PROFILE_PATTERN.test(id)) return null;
-  const name = selfDisplayName();
-  const handle = canonicalHandle(name);
+  let name = String(player.name || id).trim();
+  let handle = String(player.handle || "").trim();
+  if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
+  const personKey = canonicalRosterKey(handle || name || id);
   const active = Boolean(player.active || player.available || player.status === "active");
   const seeded = Boolean(player.seeded);
   if (!active && !seeded) return null;

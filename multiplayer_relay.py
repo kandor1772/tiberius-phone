@@ -42,6 +42,10 @@ def canonical_roster_key(value: object) -> str:
     key = identity_key(value)
     if key and re.match(r"^mo(?:r(?:k|t(?:i(?:m(?:er?)?)?)?)?)?$", key):
         return "mork"
+    if key in {"droz", "dr oz", "dr. oz"}:
+        return "droz"
+    if key == "raypalmer":
+        return "raypalmer"
     return key
 
 
@@ -227,6 +231,14 @@ class RelayState:
                 events.append(event)
         return events
 
+    def _canonical_name_for_platform(self, platform: str) -> str:
+        text = str(platform or "").strip().lower()
+        if any(token in text for token in ("iphone", "ipad", "ipod", "android", "mobile")):
+            return "RayPalmer"
+        if "mac" in text:
+            return "Dr. Oz"
+        return "Mork"
+
     def touch_player(self, player: dict, platform: str = "") -> dict:
         now = time.time()
         self.prune_stale_players()
@@ -236,7 +248,7 @@ class RelayState:
             player_id = f"anon-{device_id}" if device_id else ""
         name = str(player.get("name") or player_id).strip()
         handle = str(player.get("handle") or name).strip()
-        canonical_name = "Mork"
+        canonical_name = self._canonical_name_for_platform(platform)
         name = canonical_name
         handle = canonical_name
         player_id = canonical_roster_key(canonical_name)
