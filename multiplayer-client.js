@@ -6,7 +6,16 @@ const ROSTER_KEY = "tiberius-phone-public-roster-v6";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
 const RELAY_TIMEOUT_MS = 8_000;
-const DEFAULT_PLAYER_NAME = "";
+
+function detectDefaultPlayerName() {
+  const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
+  const ua = String(typeof navigator !== "undefined" ? navigator.userAgent || "" : "").toLowerCase();
+  if (/(iphone|ipad|ipod|android|mobile)/i.test(platform) || /(iphone|ipad|ipod|android|mobile)/i.test(ua)) return "RayPalmer";
+  if (/mac/i.test(platform) || /mac os/i.test(ua)) return "Dr. Oz";
+  return "Mork";
+}
+
+const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
 const FALLBACK_PLAYERS = [
   { id: "rick", name: "rick", active: false, available: false, seeded: true },
   { id: "queenorma", name: "QueeNorma", active: false, available: false, seeded: true },

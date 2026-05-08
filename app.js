@@ -1,14 +1,23 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v6";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v7";
 
 const BUILD_ID = "authoritative-relay";
-const ASSET_BUILD_ID = "authoritative-relay-roster-v6";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v7";
 const CACHE_PREFIX = "tiberius-phone-";
 const CURRENT_CACHE = `tiberius-phone-v71-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
-const DEFAULT_PLAYER_NAME = "";
+
+function detectDefaultPlayerName() {
+  const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
+  const ua = String(typeof navigator !== "undefined" ? navigator.userAgent || "" : "").toLowerCase();
+  if (/(iphone|ipad|ipod|android|mobile)/i.test(platform) || /(iphone|ipad|ipod|android|mobile)/i.test(ua)) return "RayPalmer";
+  if (/mac/i.test(platform) || /mac os/i.test(ua)) return "Dr. Oz";
+  return "Mork";
+}
+
+const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
 const SOLUTION_TARGETS = {
   successfulMoves: 100000,
   exactPositions: 50000,
