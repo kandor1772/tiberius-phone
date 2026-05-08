@@ -28,9 +28,9 @@ body {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(320px, 620px) minmax(320px, 480px);
+  grid-template-columns: minmax(320px, 560px) minmax(320px, 480px);
   gap: 18px;
-  max-width: 1160px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: max(14px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom));
 }
@@ -112,8 +112,10 @@ input {
 .board {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
-  width: min(calc(100vw - 28px), 620px);
+  width: min(100%, calc(100dvh - 236px), 560px);
   aspect-ratio: 1;
+  container-type: inline-size;
+  align-self: center;
   margin-top: 12px;
   border: 3px solid #55331f;
   border-radius: 8px;
@@ -133,7 +135,7 @@ input {
   border: 0;
   border-radius: 0;
   padding: 0;
-  font-size: clamp(1.7rem, 8.2vw, 4.2rem);
+  font-size: clamp(1.45rem, 9.5cqw, 3.75rem);
   line-height: 1;
   cursor: pointer;
 }
@@ -161,7 +163,7 @@ input {
   z-index: 2;
   display: block;
   font-family: "Arial Unicode MS", "DejaVu Sans", "Noto Sans Symbols 2", "Apple Symbols", sans-serif;
-  font-size: clamp(2.15rem, 8.6vw, 4.35rem);
+  font-size: clamp(1.7rem, 10.25cqw, 3.85rem);
   font-weight: 900;
   line-height: 0.9;
   transform: translateY(-0.06em);
@@ -472,7 +474,7 @@ summary {
   }
 
   .board {
-    width: 100%;
+    width: min(100%, calc(100dvh - 214px));
   }
 
   .actions {
