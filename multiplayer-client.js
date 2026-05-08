@@ -2,7 +2,7 @@ const PLAYER_KEY = "tiberius-phone-player-v1";
 const NTFY_SEEN_KEY = "tiberius-phone-ntfy-seen-v2";
 const NTFY_BASE = "https://ntfy.sh";
 const NTFY_PREFIX = "tiberius-phone-chess-v2";
-const ROSTER_KEY = "tiberius-phone-public-roster-v4";
+const ROSTER_KEY = "tiberius-phone-public-roster-v5";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
 const RELAY_TIMEOUT_MS = 8_000;
@@ -142,6 +142,7 @@ function clearLegacyRosterStorage() {
     localStorage.removeItem("tiberius-phone-public-roster-v1");
     localStorage.removeItem("tiberius-phone-public-roster-v2");
     localStorage.removeItem("tiberius-phone-public-roster-v3");
+    localStorage.removeItem("tiberius-phone-public-roster-v4");
   } catch (_err) {}
 }
 

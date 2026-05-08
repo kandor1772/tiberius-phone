@@ -1,7 +1,7 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v4";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v5";
 
 const BUILD_ID = "authoritative-relay";
 const CACHE_PREFIX = "tiberius-phone-";
@@ -411,14 +411,17 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
   if (!id || (!includeSelf && id === multiplayer.player.id)) return null;
   const name = String(player.name || id).trim();
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
+  const active = Boolean(player.active || player.available || player.status === "active");
+  const seeded = Boolean(player.seeded);
+  if (!active && !seeded) return null;
   return {
     id,
     name,
     handle: String(player.handle || "").trim(),
     device_id: String(player.device_id || player.deviceId || "").trim(),
-    active: Boolean(player.active || player.available || player.status === "active"),
+    active,
     last_seen: player.last_seen || player.updated_at || "",
-    seeded: Boolean(player.seeded),
+    seeded,
   };
 }
 

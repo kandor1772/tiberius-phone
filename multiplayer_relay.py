@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import threading
 import time
 import uuid
@@ -31,6 +32,17 @@ def normalized_keys(*values: object) -> set[str]:
     return keys
 
 
+def identity_key(value: object) -> str:
+    return "".join(ch for ch in str(value or "").strip().lower() if ch.isalnum())
+
+
+def canonical_roster_key(value: object) -> str:
+    key = identity_key(value)
+    if key and re.match(r"^mo(?:r(?:k|t(?:i(?:m(?:er?)?)?)?)?)?$", key):
+        return "mork"
+    return key
+
+
 class RelayState:
     def __init__(self) -> None:
         self.lock = threading.RLock()
@@ -53,6 +65,15 @@ class RelayState:
     def _keys_for_record(self, record: dict) -> set[str]:
         return normalized_keys(record.get("id"), record.get("name"), record.get("handle"))
 
+    def _roster_key_for_record(self, record: dict) -> str:
+        person_key = canonical_roster_key(record.get("handle") or record.get("name") or record.get("id"))
+        if person_key == "mork":
+            return "person:mork"
+        device_id = self._device_id_for(record)
+        if device_id:
+            return f"device:{device_id}"
+        return person_key
+
     def _unindex_record(self, record: dict) -> None:
         for key, value in list(self.players.items()):
             if value is record:
@@ -61,6 +82,12 @@ class RelayState:
     def _index_record(self, record: dict) -> None:
         for key in self._keys_for_record(record):
             self.players[key] = record
+
+    def prune_stale_players(self) -> None:
+        now = time.time()
+        for record in list({id(value): value for value in self.players.values()}.values()):
+            if now - float(record.get("last_seen", 0)) > STALE_AFTER_SECONDS:
+                self._unindex_record(record)
 
     def _record_for(self, player_id: str) -> dict | None:
         for candidate in normalized_keys(player_id):
@@ -94,14 +121,35 @@ class RelayState:
 
     def touch_player(self, player: dict) -> dict:
         now = time.time()
+        self.prune_stale_players()
         device_id = self._device_id_for(player)
         player_id = str(player.get("id") or player.get("name") or "").strip()
         if not player_id:
             player_id = f"anon-{device_id}" if device_id else ""
         name = str(player.get("name") or player_id).strip()
         handle = str(player.get("handle") or name).strip()
+        incoming_key = self._roster_key_for_record({
+            "id": player_id,
+            "name": name,
+            "handle": handle,
+            "device_id": device_id,
+        })
         existing = next((self.players[item] for item in normalized_keys(player_id, handle) if item in self.players), None)
-        if existing and device_id and existing.get("device_id") != device_id and normalized_keys(existing.get("id"), existing.get("handle")).isdisjoint(normalized_keys(player_id, handle)):
+        if not existing and incoming_key:
+            existing = next(
+                (
+                    record for record in {id(value): value for value in self.players.values()}.values()
+                    if self._roster_key_for_record(record) == incoming_key
+                ),
+                None,
+            )
+        if (
+            existing
+            and self._roster_key_for_record(existing) != incoming_key
+            and device_id
+            and existing.get("device_id") != device_id
+            and normalized_keys(existing.get("id"), existing.get("handle")).isdisjoint(normalized_keys(player_id, handle))
+        ):
             existing = None
         record = existing or {}
         if record:
@@ -121,6 +169,7 @@ class RelayState:
 
     def roster(self) -> list[dict]:
         now = time.time()
+        self.prune_stale_players()
         seen: set[int] = set()
         players: list[dict] = []
         for record in self.players.values():
