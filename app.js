@@ -1,10 +1,10 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v7";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v8";
 
 const BUILD_ID = "authoritative-relay";
-const ASSET_BUILD_ID = "authoritative-relay-roster-v7";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v8";
 const CACHE_PREFIX = "tiberius-phone-";
 const CURRENT_CACHE = `tiberius-phone-v71-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
@@ -18,6 +18,15 @@ function detectDefaultPlayerName() {
 }
 
 const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
+const OFFENSIVE_NAME_PATTERN = /(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)/i;
+
+function sanitizeDisplayName(value, fallback = DEFAULT_PLAYER_NAME) {
+  const text = String(value || "").replace(/\s+/g, " ").trim().slice(0, 32);
+  if (!text) return fallback;
+  if (!/[a-z0-9]/i.test(text)) return fallback;
+  if (OFFENSIVE_NAME_PATTERN.test(text)) return fallback;
+  return text;
+}
 const SOLUTION_TARGETS = {
   successfulMoves: 100000,
   exactPositions: 50000,
@@ -420,8 +429,8 @@ function currentPlayerRecord() {
 function normalizePlayer(player, { includeSelf = false } = {}) {
   let id = String(player.id || player.name || "").trim();
   if (!id || (!includeSelf && id === multiplayer.player.id)) return null;
-  let name = String(player.name || id).trim();
-  let handle = String(player.handle || "").trim();
+  let name = sanitizeDisplayName(player.name || id, DEFAULT_PLAYER_NAME);
+  let handle = sanitizeDisplayName(player.handle || name, name);
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
   const personKey = canonicalRosterKey(handle || name || id);
   if (personKey === "liamz") {
@@ -546,6 +555,7 @@ function syncOnlineName({ heartbeat = false } = {}) {
   const before = multiplayer.label();
   const beforeScope = profileScope();
   multiplayer.setName(onlineNameInput.value);
+  onlineNameInput.value = multiplayer.player.name || "";
   if (profileScope() !== beforeScope) {
     phoneMemory = makePhoneMemory();
     loadPhoneMemory();
@@ -1117,6 +1127,9 @@ async function heartbeatOnline() {
   try {
     const data = await multiplayer.heartbeat({ ...gameSnapshot(), progress: progressPayload() });
     handleOnlineResponse(data);
+    if (document.activeElement !== onlineNameInput) {
+      onlineNameInput.value = multiplayer.player.name || "";
+    }
   } finally {
     heartbeatInFlight = false;
     if (isOnlineGame() || Date.now() < fastHeartbeatUntil) scheduleHeartbeat(1000);

@@ -16,10 +16,25 @@ function detectDefaultPlayerName() {
 }
 
 const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
+const OFFENSIVE_NAME_PATTERN = /(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)/i;
 const FALLBACK_PLAYERS = [
   { id: "rick", name: "rick", active: false, available: false, seeded: true },
   { id: "queenorma", name: "QueeNorma", active: false, available: false, seeded: true },
 ];
+
+function detectPlatform() {
+  const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").trim();
+  if (platform) return platform;
+  return "unknown";
+}
+
+function sanitizeDisplayName(value, fallback = DEFAULT_PLAYER_NAME) {
+  const text = String(value || "").replace(/\s+/g, " ").trim().slice(0, 32);
+  if (!text) return fallback;
+  if (!/[a-z0-9]/i.test(text)) return fallback;
+  if (OFFENSIVE_NAME_PATTERN.test(text)) return fallback;
+  return text;
+}
 
 function canonicalHandle(name) {
   const handle = safeTopicPart(name).replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
@@ -64,15 +79,15 @@ function betterRosterRecord(current, next) {
 }
 
 function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
-  const rawName = String(player?.name || "").trim().slice(0, 32);
+  const rawName = sanitizeDisplayName(player?.name || player?.handle || player?.id, DEFAULT_PLAYER_NAME);
   const savedId = String(player?.id || "").trim();
   let name = rawName && !isAnonIdentity(rawName)
     ? rawName
-    : isAnonIdentity(savedId) ? DEFAULT_PLAYER_NAME : savedId || DEFAULT_PLAYER_NAME;
+    : sanitizeDisplayName(isAnonIdentity(savedId) ? DEFAULT_PLAYER_NAME : savedId, DEFAULT_PLAYER_NAME);
   const handle = canonicalHandle(name);
   const baseId = isAnonIdentity(player?.id) ? "" : player?.id;
-  const id = handle || baseId || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const deviceId = player?.device_id || player?.deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const id = handle || baseId || deviceId || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const aliases = new Set(preserveAliases && Array.isArray(player?.aliases) ? player.aliases : []);
   if (preserveAliases && player?.id && !isAnonIdentity(player.id) && player.id !== id) aliases.add(player.id);
   const ownKeys = new Set([id, name, handle].map(canonicalRosterKey).filter(Boolean));
@@ -81,6 +96,7 @@ function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
     name,
     handle: handle || "",
     device_id: deviceId,
+    platform: String(player?.platform || player?.platform_hint || detectPlatform()).trim(),
     aliases: [...aliases].filter(alias => !ownKeys.has(canonicalRosterKey(alias))).slice(0, 8),
   };
 }
@@ -190,7 +206,7 @@ export class MultiplayerClient {
   }
 
   setName(name) {
-    const clean = String(name || "").trim();
+    const clean = sanitizeDisplayName(name, DEFAULT_PLAYER_NAME);
     if (!clean) return;
     this.player = normalizePlayerIdentity({ ...this.player, name: clean }, { preserveAliases: false });
     try {
@@ -208,7 +224,7 @@ export class MultiplayerClient {
     const name = String(this.player?.name || "").trim();
     if (name && !isAnonIdentity(name) && !isAnonIdentity(id)) return false;
     const aliases = [...(this.player.aliases || []), id].filter(Boolean);
-    this.player = normalizePlayerIdentity({ ...this.player, name: defaultName, aliases });
+    this.player = normalizePlayerIdentity({ ...this.player, name: sanitizeDisplayName(defaultName, DEFAULT_PLAYER_NAME), aliases });
     try {
       localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
     } catch (_err) {}
@@ -222,6 +238,7 @@ export class MultiplayerClient {
       name: "",
       handle: "",
       device_id: this.player.device_id,
+      platform: this.player.platform,
       aliases: [],
     });
     try {
@@ -254,7 +271,14 @@ export class MultiplayerClient {
         this.connected = true;
         this.transport = endpoint.includes("127.0.0.1") || endpoint.includes("localhost") ? "local relay" : "DuckDNS relay";
         this.lastError = "";
-        return response.json().catch(() => ({}));
+        const data = await response.json().catch(() => ({}));
+        if (data?.self) {
+          this.player = normalizePlayerIdentity({ ...this.player, ...data.self, platform: this.player.platform }, { preserveAliases: false });
+          try {
+            localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
+          } catch (_err) {}
+        }
+        return data;
       } catch (error) {
         clearTimeout(timer);
         this.lastError = error?.name === "AbortError" ? "relay timeout" : "relay unavailable";
@@ -274,7 +298,7 @@ export class MultiplayerClient {
   rememberRosterPlayer(player) {
     if (isAnonIdentity(player?.id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) return;
     let id = canonicalHandle(player?.id || player?.name || player?.handle);
-    let name = String(player?.name || player?.handle || id || "").trim().slice(0, 32);
+    let name = sanitizeDisplayName(player?.name || player?.handle || id || "", DEFAULT_PLAYER_NAME);
     const personKey = canonicalRosterKey(player?.handle || name || id);
     if (personKey === "liamz") {
       id = "liamz";

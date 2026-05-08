@@ -18,6 +18,7 @@ TEST_PROFILE_PREFIXES = (
     "ray-cf", "ray-clean", "ray-move", "ray-win", "norma-test", "norma-lan",
     "norma-cf", "norma-clean", "norma-move", "norma-win", "codex-smoke",
 )
+OFFENSIVE_NAME_PATTERN = re.compile(r"(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)", re.I)
 
 
 def is_test_profile(value: str) -> bool:
@@ -43,6 +44,28 @@ def canonical_roster_key(value: object) -> str:
     return key
 
 
+def default_name_for_platform(platform: object) -> str:
+    text = str(platform or "").strip().lower()
+    if any(token in text for token in ("iphone", "ipad", "ipod", "android", "mobile")):
+        return "RayPalmer"
+    if "mac" in text or "darwin" in text:
+        return "Dr. Oz"
+    if "win" in text:
+        return "Mork"
+    return "Player"
+
+
+def sanitize_display_name(value: object, fallback: str = "Player") -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()[:32]
+    if not text:
+        return fallback
+    if not re.search(r"[A-Za-z0-9]", text):
+        return fallback
+    if OFFENSIVE_NAME_PATTERN.search(text):
+        return fallback
+    return text
+
+
 class RelayState:
     def __init__(self) -> None:
         self.lock = threading.RLock()
@@ -57,13 +80,14 @@ class RelayState:
             player.get("id"),
             player.get("name"),
             player.get("handle"),
+            *(player.get("aliases") or []),
         )
 
     def _device_id_for(self, player: dict) -> str:
         return str(player.get("device_id") or player.get("deviceId") or "").strip()
 
     def _keys_for_record(self, record: dict) -> set[str]:
-        return normalized_keys(record.get("id"), record.get("name"), record.get("handle"))
+        return normalized_keys(record.get("id"), record.get("name"), record.get("handle"), *(record.get("aliases") or []))
 
     def _roster_key_for_record(self, record: dict) -> str:
         person_key = canonical_roster_key(record.get("handle") or record.get("name") or record.get("id"))
@@ -73,6 +97,37 @@ class RelayState:
         if device_id:
             return f"device:{device_id}"
         return person_key
+
+    def _unique_display_name(self, desired: object, device_id: str, existing: dict | None = None, platform: object = "") -> str:
+        base = sanitize_display_name(desired, default_name_for_platform(platform))
+        occupied = {
+            canonical_roster_key(record.get("name") or record.get("handle") or record.get("id"))
+            for record in {id(value): value for value in self.players.values()}.values()
+            if record is not existing
+        }
+        if existing:
+            current_name = sanitize_display_name(existing.get("name") or existing.get("handle") or existing.get("id"), base)
+            if canonical_roster_key(current_name) not in occupied:
+                return current_name
+        if canonical_roster_key(base) not in occupied:
+            return base
+        for suffix in range(2, 100):
+            candidate = f"{base} {suffix}"
+            if canonical_roster_key(candidate) not in occupied:
+                return candidate
+        return f"{base} {uuid.uuid4().hex[:4]}"
+
+    def _public_player(self, record: dict) -> dict:
+        return {
+            "id": record.get("id", ""),
+            "name": record.get("name", ""),
+            "handle": record.get("handle") or record.get("name") or record.get("id") or "",
+            "device_id": record.get("device_id") or "",
+            "aliases": list(record.get("aliases") or []),
+            "active": bool(record.get("active")),
+            "available": bool(record.get("available")),
+            "last_seen": record.get("last_seen"),
+        }
 
     def _unindex_record(self, record: dict) -> None:
         for key, value in list(self.players.items()):
@@ -123,22 +178,30 @@ class RelayState:
         now = time.time()
         self.prune_stale_players()
         device_id = self._device_id_for(player)
+        platform = str(player.get("platform") or player.get("platform_hint") or "").strip()
         player_id = str(player.get("id") or player.get("name") or "").strip()
         if not player_id:
             player_id = f"anon-{device_id}" if device_id else ""
-        name = str(player.get("name") or player_id).strip()
-        handle = str(player.get("handle") or name).strip()
-        if canonical_roster_key(handle or name or player_id) == "liamz":
-            player_id = "liamz"
-            name = "liamz"
-            handle = "liamz"
+        existing = next((record for record in {id(value): value for value in self.players.values()}.values() if self._device_id_for(record) == device_id), None)
+        if not existing and player_id:
+            existing = next((self.players[item] for item in normalized_keys(player_id) if item in self.players), None)
+        if not existing and player_id:
+            existing = next(
+                (
+                    record for record in {id(value): value for value in self.players.values()}.values()
+                    if canonical_roster_key(record.get("id") or record.get("handle") or record.get("name")) == canonical_roster_key(player_id)
+                ),
+                None,
+            )
+        desired_name = player.get("name") or player.get("handle") or player_id or default_name_for_platform(platform)
+        name = self._unique_display_name(desired_name, device_id, existing, platform)
+        handle = sanitize_display_name(player.get("handle") or name or player_id, name)
         incoming_key = self._roster_key_for_record({
             "id": player_id,
             "name": name,
             "handle": handle,
             "device_id": device_id,
         })
-        existing = next((self.players[item] for item in normalized_keys(player_id, handle) if item in self.players), None)
         if not existing and incoming_key:
             existing = next(
                 (
@@ -158,12 +221,14 @@ class RelayState:
         record = existing or {}
         if record:
             self._unindex_record(record)
+        previous_aliases = [existing.get("id"), existing.get("name"), existing.get("handle")] if existing else []
+        previous_aliases.extend(record.get("aliases") or [])
         record.update({
             "id": player_id,
             "name": name,
             "handle": handle,
             "device_id": device_id,
-            "aliases": [],
+            "aliases": [alias for alias in normalized_keys(*previous_aliases) if canonical_roster_key(alias) != canonical_roster_key(name)],
             "active": True,
             "available": True,
             "last_seen": now,
@@ -185,13 +250,9 @@ class RelayState:
                 continue
             active = now - float(record.get("last_seen", 0)) <= STALE_AFTER_SECONDS
             players.append({
-                "id": record["id"],
-                "name": record["name"],
-                "handle": record.get("handle") or record["name"],
-                "device_id": record.get("device_id") or "",
+                **self._public_player(record),
                 "active": active,
                 "available": active,
-                "last_seen": record.get("last_seen"),
             })
         return sorted(players, key=lambda item: (not item["active"], item["name"].lower()))
 
@@ -248,6 +309,7 @@ class RelayState:
                 "incoming": self.incoming_for(record),
                 "events": player_events,
                 "progress": self.shared_progress,
+                "self": self._public_player(record),
                 "message": "Relay connected.",
             }
 
@@ -282,6 +344,7 @@ class RelayState:
             return {
                 "ok": True,
                 "players": self.roster(),
+                "self": self._public_player(sender),
                 "message": f"Invite sent to {target_name or target_handle or target}.",
             }
 
@@ -295,7 +358,7 @@ class RelayState:
                 return {"ok": False, "players": self.roster(), "message": "Invite is no longer available."}
             challenge["status"] = "accepted" if accept else "declined"
             if not accept:
-                return {"ok": True, "players": self.roster(), "message": "Invite declined."}
+                return {"ok": True, "players": self.roster(), "self": self._public_player(responder), "message": "Invite declined."}
             game_id = f"game-{uuid.uuid4().hex[:12]}"
             game = {
                 "id": game_id,
@@ -322,6 +385,7 @@ class RelayState:
             return {
                 "ok": True,
                 "players": self.roster(),
+                "self": self._public_player(responder),
                 "game": {**game, "color": "b"},
                 "message": "Invite accepted.",
             }
@@ -344,7 +408,7 @@ class RelayState:
                     "fen": payload.get("fen"),
                     "pgn": payload.get("pgn"),
                 })
-            return {"ok": True, "players": self.roster(), "message": "Move relayed."}
+            return {"ok": True, "players": self.roster(), "self": self._public_player(sender), "message": "Move relayed."}
 
     def forfeit(self, player: dict, payload: dict) -> dict:
         with self.lock:
@@ -360,7 +424,7 @@ class RelayState:
                             "from": sender["id"],
                             "reason": payload.get("reason") or "forfeit",
                         })
-            return {"ok": True, "players": self.roster(), "message": "Forfeit relayed."}
+            return {"ok": True, "players": self.roster(), "self": self._public_player(sender), "message": "Forfeit relayed."}
 
 
 class RelayHandler(BaseHTTPRequestHandler):
