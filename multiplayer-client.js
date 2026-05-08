@@ -1,7 +1,7 @@
 const PLAYER_KEY = "tiberius-phone-player-v1";
 const NTFY_SEEN_KEY = "tiberius-phone-ntfy-seen-v2";
 const NTFY_BASE = "https://ntfy.sh";
-const NTFY_PREFIX = "tiberius-phone-chess-v2";
+const NTFY_PREFIX = "tiberius-phone-chess-v3";
 const ROSTER_KEY = "tiberius-phone-public-roster-v6";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
@@ -17,7 +17,18 @@ function detectDefaultPlayerName() {
   return "Mork";
 }
 
+function detectLaunchSurface() {
+  if (typeof window === "undefined") return "browser";
+  const standalone = Boolean(
+    window.matchMedia?.("(display-mode: standalone)")?.matches
+    || window.matchMedia?.("(display-mode: fullscreen)")?.matches
+    || window.navigator?.standalone
+  );
+  return standalone ? "homebutton" : "browser";
+}
+
 const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
+const LAUNCH_SURFACE = detectLaunchSurface();
 const OFFENSIVE_NAME_PATTERN = /(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)/i;
 const PERSON_ROSTER_KEYS = new Set(["mork", "liamz", "raypalmer", "queenorma", "rick", "droz", "spock"]);
 const PERSON_DISPLAY_NAMES = {
@@ -101,7 +112,8 @@ function rosterRecordActive(player) {
 
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(firstNamedIdentity(player?.handle, player?.name, player?.id));
-  if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}`;
+  const surface = String(player?.surface || "browser").trim().toLowerCase();
+  if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}:surface:${surface}`;
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
   return personKey;
@@ -142,6 +154,7 @@ function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
     name,
     handle: handle || "",
     device_id: deviceId,
+    surface: String(player?.surface || LAUNCH_SURFACE).trim().toLowerCase() || LAUNCH_SURFACE,
     platform: String(player?.platform || player?.platform_hint || detectPlatform()).trim(),
     aliases: [...aliases].filter(alias => !ownKeys.has(canonicalRosterKey(alias))).slice(0, 8),
   };
@@ -267,6 +280,13 @@ export class MultiplayerClient {
     this.endpoints = endpoints;
     clearLegacyRosterStorage();
     this.player = stableId();
+    this.surface = LAUNCH_SURFACE;
+    if (this.player.surface !== this.surface) {
+      this.player = normalizePlayerIdentity({ ...this.player, surface: this.surface });
+      try {
+        localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
+      } catch (_err) {}
+    }
     this.pendingRename = false;
     this.connected = false;
     this.lastError = "";
@@ -326,6 +346,7 @@ export class MultiplayerClient {
     const body = {
       player: { ...this.player, progress: payload?.progress || null },
       client: "tiberius-phone-github-pages",
+      surface: this.surface,
       payload: { ...payload, rename: Boolean(payload?.rename || this.pendingRename) },
     };
     for (const endpoint of this.endpoints) {
@@ -354,6 +375,7 @@ export class MultiplayerClient {
             ...data.self,
             name: serverName || this.player.name,
             handle: serverName ? data.self.handle : this.player.handle,
+            surface: this.surface,
             platform: this.player.platform,
           }, { preserveAliases: false });
           try {
@@ -399,6 +421,7 @@ export class MultiplayerClient {
       name,
       handle: PERSON_ROSTER_KEYS.has(personKey) ? personKey : canonicalHandle(player?.handle || name) || id,
       device_id: String(player?.device_id || player?.deviceId || "").trim(),
+      surface: String(player?.surface || "browser").trim().toLowerCase() || "browser",
       active,
       available: active,
       last_seen: lastSeen,
@@ -430,12 +453,12 @@ export class MultiplayerClient {
     return [...byPerson.values()];
   }
 
-  topicFor(id) {
-    return `${NTFY_PREFIX}-${safeTopicPart(id)}`;
+  topicFor(id, surface = this.surface) {
+    return `${NTFY_PREFIX}-${safeTopicPart(surface)}-${safeTopicPart(id)}`;
   }
 
-  rosterTopic() {
-    return `${NTFY_PREFIX}-public-roster`;
+  rosterTopic(surface = this.surface) {
+    return `${NTFY_PREFIX}-${safeTopicPart(surface)}-public-roster`;
   }
 
   topicsForPlayer() {
@@ -506,6 +529,7 @@ export class MultiplayerClient {
       name: this.label(),
       handle,
       device_id: this.player.device_id,
+      surface: this.surface,
       updated_at: now,
     };
     await this.publishTopic(this.rosterTopic(), message);
@@ -536,6 +560,7 @@ export class MultiplayerClient {
         name: message.name || message.handle || message.id,
         handle: message.handle || message.id,
         device_id: message.device_id || message.deviceId,
+        surface: message.surface || this.surface,
         last_seen: Number(message.updated_at || envelope.time * 1000 || Date.now()),
       });
     }
@@ -636,8 +661,8 @@ export class MultiplayerClient {
     return null;
   }
 
-  async challenge({ target = "", targetDevice = "", targetName = "", targetHandle = "", random = false, inviterColor = "w", game }) {
-    const payload = { target, targetDevice, targetName, targetHandle: targetHandle || targetName || target, random, inviterColor, game };
+  async challenge({ target = "", targetDevice = "", targetName = "", targetHandle = "", targetSurface = this.surface, random = false, inviterColor = "w", game }) {
+    const payload = { target, targetDevice, targetName, targetHandle: targetHandle || targetName || target, targetSurface, random, inviterColor, game };
     const data = await this.request("/challenge", payload, RELAY_TIMEOUT_MS);
     if (data?.ok) {
       this.connected = true;
@@ -658,6 +683,7 @@ export class MultiplayerClient {
         target_name: targetName || target,
         target_handle: targetHandle || targetName || target,
         target_device: targetDevice,
+        target_surface: targetSurface,
         game,
         created_at: new Date().toISOString(),
         created_at_ms: Date.now(),

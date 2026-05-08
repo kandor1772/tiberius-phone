@@ -71,6 +71,7 @@ function publicPlayer(record) {
     name: record.name || "",
     handle: record.handle || record.name || record.id || "",
     device_id: record.device_id || "",
+    surface: String(record.surface || "browser").trim().toLowerCase() || "browser",
     aliases: Array.isArray(record.aliases) ? record.aliases : [],
     active: Boolean(record.active),
     available: Boolean(record.available),
@@ -133,7 +134,8 @@ export class TiberiusRelay {
 
   rosterKeyFor(record) {
     const personKey = canonicalRosterKey(record.handle || record.name || record.id);
-    if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}`;
+    const surface = String(record.surface || "browser").trim().toLowerCase() || "browser";
+    if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}:surface:${surface}`;
     const deviceId = String(record.device_id || record.deviceId || "").trim();
     if (deviceId) return `device:${deviceId}`;
     return personKey;
@@ -150,6 +152,7 @@ export class TiberiusRelay {
       player.handle,
       player.device_id,
       player.deviceId,
+      player.surface,
       ...(player.aliases || [])
     );
   }
@@ -160,6 +163,7 @@ export class TiberiusRelay {
 
   findRecordFor(player) {
     const deviceId = String(player.device_id || player.deviceId || "").trim();
+    const surface = String(player.surface || "browser").trim().toLowerCase() || "browser";
     if (deviceId) {
       const byDevice = this.data.players.find(record => String(record.device_id || "").trim() === deviceId);
       if (byDevice) return byDevice;
@@ -167,14 +171,14 @@ export class TiberiusRelay {
     const incoming = this.playerDeliveryKeys(player);
     const byKey = this.data.players.find(record => {
       for (const key of this.recordKeys(record)) {
-        if (incoming.has(key)) return true;
+        if (incoming.has(key) && String(record.surface || "browser").trim().toLowerCase() === surface) return true;
       }
       return false;
     });
     if (byKey) return byKey;
     const personKey = canonicalRosterKey(player.handle || player.name || player.id);
     if (PERSON_ROSTER_KEYS.has(personKey)) {
-      return this.data.players.find(record => this.rosterKeyFor(record) === `person:${personKey}`);
+      return this.data.players.find(record => this.rosterKeyFor(record) === `person:${personKey}:surface:${surface}`);
     }
     return null;
   }
@@ -216,6 +220,7 @@ export class TiberiusRelay {
     this.prune();
     const platform = String(player.platform || player.platform_hint || "").trim();
     const deviceId = String(player.device_id || player.deviceId || "").trim();
+    const surface = String(player.surface || "browser").trim().toLowerCase() || "browser";
     const playerId = String(player.device_id || player.deviceId || player.id || player.name || "").trim() || (deviceId ? `anon-${deviceId}` : "");
     const existing = this.findRecordFor(player);
     const desiredName = (
@@ -241,6 +246,7 @@ export class TiberiusRelay {
       name,
       handle,
       device_id: deviceId,
+      surface,
       aliases: [...aliases].slice(-16),
       active: true,
       available: true,
@@ -268,9 +274,12 @@ export class TiberiusRelay {
 
   incomingFor(record) {
     const ownKeys = this.recordKeys(record);
+    const ownSurface = String(record.surface || "browser").trim().toLowerCase() || "browser";
     const incoming = [];
     for (const challenge of Object.values(this.data.challenges)) {
       if (challenge.status !== "pending") continue;
+      const targetSurface = String(challenge.targetSurface || "browser").trim().toLowerCase() || "browser";
+      if (ownSurface !== targetSurface) continue;
       const targetKeys = this.deliveryKeysFor(challenge.target, challenge.targetName, challenge.targetHandle, challenge.targetDevice, ...(challenge.targetKeys || []));
       if ([...ownKeys].some(key => targetKeys.has(key))) incoming.push(this.publicChallenge(challenge));
     }
@@ -367,8 +376,14 @@ export class TiberiusRelay {
     let targetName = String(payload.targetName || target).trim();
     let targetHandle = String(payload.targetHandle || targetName || target).trim();
     let targetDevice = String(payload.targetDevice || "").trim();
+    const targetSurface = String(payload.targetSurface || sender.surface || "browser").trim().toLowerCase() || "browser";
     if (!target && payload.random) {
-      const candidate = this.roster().find(item => item.active && item.id !== sender.id && item.device_id !== sender.device_id);
+      const candidate = this.roster().find(item => (
+        item.active
+        && item.surface === targetSurface
+        && item.id !== sender.id
+        && item.device_id !== sender.device_id
+      ));
       if (candidate) {
         target = candidate.id;
         targetName = candidate.name;
@@ -380,7 +395,10 @@ export class TiberiusRelay {
       return jsonResponse({ ok: false, players: this.roster(), message: "No active player available." });
     }
     const targetKeys = this.deliveryKeysFor(target, targetName, targetHandle, targetDevice);
-    const targetRecord = this.data.players.find(candidate => [...targetKeys].some(key => this.recordKeys(candidate).has(key)));
+    const targetRecord = this.data.players.find(candidate => (
+      String(candidate.surface || "browser").trim().toLowerCase() === targetSurface
+      && [...targetKeys].some(key => this.recordKeys(candidate).has(key))
+    ));
     if (targetRecord) {
       target = targetRecord.id;
       targetName = targetRecord.name;
@@ -397,6 +415,7 @@ export class TiberiusRelay {
       targetName,
       targetHandle,
       targetDevice,
+      targetSurface,
       targetKeys: [...this.deliveryKeysFor(target, targetName, targetHandle, targetDevice)],
       created_at: new Date().toISOString(),
       created_at_ms: Date.now(),

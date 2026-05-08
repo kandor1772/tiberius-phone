@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=permanent-worker-relay-v29";
+import { MultiplayerClient } from "./multiplayer-client.js?v=surface-routed-relay-v30";
 
-const ASSET_BUILD_ID = "permanent-worker-relay-v29";
+const ASSET_BUILD_ID = "surface-routed-relay-v30";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v95-permanent-worker-relay";
+const CURRENT_CACHE = "tiberius-phone-v96-surface-routed-relay";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 
@@ -89,10 +89,31 @@ function rosterRecordActive(player) {
 
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(firstNamedIdentity(player?.handle, player?.name, player?.id));
-  if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}`;
+  const surface = String(player?.surface || "browser").trim().toLowerCase();
+  if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}:surface:${surface}`;
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
   return personKey;
+}
+
+function rosterDisplayKey(player) {
+  const personKey = canonicalRosterKey(firstNamedIdentity(player?.handle, player?.name, player?.id));
+  if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}`;
+  const nameKey = canonicalRosterKey(firstNamedIdentity(player?.name, player?.handle, player?.id));
+  return nameKey || rosterIdentityKey(player);
+}
+
+function sameSurface(player) {
+  return String(player?.surface || "browser").trim().toLowerCase() === multiplayer.surface;
+}
+
+function betterVisiblePlayer(current, next) {
+  if (!current) return next;
+  if (!next) return current;
+  const currentSurface = sameSurface(current);
+  const nextSurface = sameSurface(next);
+  if (nextSurface !== currentSurface) return nextSurface ? next : current;
+  return betterRosterRecord(current, next);
 }
 
 function betterRosterRecord(current, next) {
@@ -500,6 +521,7 @@ function currentPlayerRecord() {
     name: selfName,
     handle: firstNamedIdentity(matched?.handle, multiplayer.player.handle),
     device_id: matched?.device_id || multiplayer.player.device_id || "",
+    surface: matched?.surface || multiplayer.surface,
     active: true,
     available: true,
     self: true,
@@ -516,6 +538,7 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
   let name = sanitizeDisplayName(firstNamedIdentity(player.name, player.handle), DEFAULT_PLAYER_NAME);
   let handle = sanitizeDisplayName(firstNamedIdentity(player.handle, name), name);
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
+  const surface = String(player.surface || "browser").trim().toLowerCase() || "browser";
   const personKey = canonicalRosterKey(handle || name || id);
   if (PERSON_ROSTER_KEYS.has(personKey)) {
     name = canonicalDisplayName(personKey, name);
@@ -525,7 +548,7 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
     }
   }
   const lastSeen = normalizeTimestamp(player.last_seen || player.updated_at);
-  const active = rosterRecordActive({ ...player, last_seen: lastSeen });
+  const active = sameSurface({ surface }) && rosterRecordActive({ ...player, last_seen: lastSeen });
   const seeded = Boolean(player.seeded);
   if (!active && !seeded && personKey !== "liamz") return null;
   return {
@@ -533,6 +556,7 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
     name,
     handle,
     device_id: String(player.device_id || player.deviceId || "").trim(),
+    surface,
     active,
     last_seen: lastSeen || player.last_seen || player.updated_at || "",
     seeded,
@@ -565,9 +589,9 @@ function mergePlayers(players = []) {
   ));
   const map = new Map();
   const remember = player => {
-    const key = rosterIdentityKey(player);
+    const key = rosterDisplayKey(player);
     if (!key || canonicalSelfKeys.has(key)) return;
-    map.set(key, betterRosterRecord(map.get(key), player));
+    map.set(key, betterVisiblePlayer(map.get(key), player));
   };
   for (const player of visibleKnownPlayers) remember(player);
   for (const raw of players) {
@@ -1273,6 +1297,7 @@ async function sendChallenge(random, target = "") {
       targetDevice,
       targetName,
       targetHandle: targetPlayer?.handle || "",
+      targetSurface: multiplayer.surface,
       random,
       inviterColor: "w",
       game: gameSnapshot(),
