@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v25";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v27";
 
-const ASSET_BUILD_ID = "authoritative-relay-roster-v25";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v27";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v91-pc-board-fit";
+const CURRENT_CACHE = "tiberius-phone-v93-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 
@@ -206,7 +206,7 @@ const SUSPENDED_GAME_KEY = "tiberius-phone-suspended-game-v1";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
 const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 const MULTIPLAYER_ENDPOINTS = [
-  "https://cars-reduced-list-contests.trycloudflare.com",
+  "https://abc-antiques-aluminium-freebsd.trycloudflare.com",
   "https://eltiburon.duckdns.org/api/multiplayer",
 ];
 const multiplayer = new MultiplayerClient({ endpoints: MULTIPLAYER_ENDPOINTS });

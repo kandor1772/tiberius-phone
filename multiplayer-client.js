@@ -6,6 +6,7 @@ const ROSTER_KEY = "tiberius-phone-public-roster-v6";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
 const RELAY_TIMEOUT_MS = 3_000;
+const NTFY_TIMEOUT_MS = 3_000;
 const NTFY_CHALLENGE_TTL_MS = 10 * 60_000;
 
 function detectDefaultPlayerName() {
@@ -180,6 +181,18 @@ function mergeRosterLists(...lists) {
 
 function publicId(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function fetchTextWithTimeout(url, options = {}, timeoutMs = NTFY_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    return response.text();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function seenKeyFor(playerId) {
@@ -433,17 +446,24 @@ export class MultiplayerClient {
   }
 
   async publishTopic(topic, message) {
-    const response = await fetch(`${NTFY_BASE}/${topic}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/plain",
-        "Title": "Tiberius",
-        "Tags": "chess",
-      },
-      body: JSON.stringify(message),
-    });
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    return response.json().catch(() => ({}));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), NTFY_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${NTFY_BASE}/${topic}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain",
+          "Title": "Tiberius",
+          "Tags": "chess",
+        },
+        body: JSON.stringify(message),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      return response.json().catch(() => ({}));
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async publishNtfy(target, message) {
@@ -478,22 +498,21 @@ export class MultiplayerClient {
     this.lastPresenceAt = now;
     const handle = this.player.handle || canonicalHandle(this.label());
     if (!handle) return false;
-    await this.publishTopic(this.rosterTopic(), {
+    const message = {
       kind: "presence",
       id: handle,
       name: this.label(),
       handle,
       device_id: this.player.device_id,
       updated_at: now,
-    });
+    };
+    await this.publishTopic(this.rosterTopic(), message);
     this.rememberRosterPlayer({ id: handle, name: this.label(), handle, device_id: this.player.device_id, last_seen: now });
     return true;
   }
 
   async pollRoster() {
-    const response = await fetch(`${NTFY_BASE}/${this.rosterTopic()}/json?poll=1&since=5m`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    const text = await response.text();
+    const text = await fetchTextWithTimeout(`${NTFY_BASE}/${this.rosterTopic()}/json?poll=1&since=10m`, { cache: "no-store" });
     for (const line of text.split(/\n+/)) {
       if (!line.trim()) continue;
       let envelope;
@@ -528,10 +547,12 @@ export class MultiplayerClient {
     const incoming = [];
     const events = [];
     let game = null;
-    for (const topic of this.topicsForPlayer()) {
-      const response = await fetch(`${NTFY_BASE}/${topic}/json?poll=1&since=30m`, { cache: "no-store" });
-      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-      const text = await response.text();
+    const topicResults = await Promise.all(this.topicsForPlayer().map(async topic => ({
+      topic,
+      text: await fetchTextWithTimeout(`${NTFY_BASE}/${topic}/json?poll=1&since=30m`, { cache: "no-store" }).catch(() => ""),
+    })));
+    for (const { topic, text } of topicResults) {
+      if (!text) continue;
       const seenForTopic = new Set(seen[topic] || []);
       for (const line of text.split(/\n+/)) {
         if (!line.trim()) continue;
@@ -597,20 +618,13 @@ export class MultiplayerClient {
   async heartbeat(state) {
     const relayData = await this.request("/heartbeat", state, RELAY_TIMEOUT_MS);
     const relayTransport = this.transport;
-    const ntfyData = await this.pollNtfy().catch(() => null);
     if (relayData?.ok) {
-      const data = ntfyData?.ok ? {
-        ...relayData,
-        players: mergeRosterLists(relayData.players, ntfyData.players),
-        incoming: mergeLists(relayData.incoming, ntfyData.incoming),
-        events: mergeLists(relayData.events, ntfyData.events),
-        game: relayData.game || ntfyData.game || null,
-      } : relayData;
-      this.rememberIncoming(data);
+      this.rememberIncoming(relayData);
       this.connected = true;
-      this.transport = ntfyData?.ok ? `${relayTransport || "relay"} + ntfy` : relayTransport;
-      return data;
+      this.transport = relayTransport;
+      return relayData;
     }
+    const ntfyData = await this.pollNtfy().catch(() => null);
     if (ntfyData?.ok) {
       this.rememberIncoming(ntfyData);
       return ntfyData;
@@ -623,6 +637,10 @@ export class MultiplayerClient {
   async challenge({ target = "", targetDevice = "", targetName = "", targetHandle = "", random = false, inviterColor = "w", game }) {
     const payload = { target, targetDevice, targetName, targetHandle: targetHandle || targetName || target, random, inviterColor, game };
     const data = await this.request("/challenge", payload, RELAY_TIMEOUT_MS);
+    if (data?.ok) {
+      this.connected = true;
+      return data;
+    }
     let ntfyDelivered = false;
     const ntfyTargets = unique([target, targetDevice, targetName, targetHandle]);
     if (ntfyTargets.length) {
@@ -642,10 +660,6 @@ export class MultiplayerClient {
         created_at: new Date().toISOString(),
         created_at_ms: Date.now(),
       }).catch(() => false);
-    }
-    if (data?.ok) {
-      this.connected = true;
-      return data;
     }
     if (ntfyDelivered) {
       this.connected = true;
