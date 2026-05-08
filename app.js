@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=notification-route-v36";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=roster-seeds-v37";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=notification-route-v36";
+import { MultiplayerClient } from "./multiplayer-client.js?v=roster-seeds-v37";
 
-const ASSET_BUILD_ID = "notification-route-v36";
+const ASSET_BUILD_ID = "roster-seeds-v37";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v102-notification-route";
+const CURRENT_CACHE = "tiberius-phone-v103-roster-seeds";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
@@ -91,9 +91,14 @@ function rosterRecordActive(player) {
   return lastSeen > 0 && Date.now() - lastSeen <= ROSTER_STALE_MS;
 }
 
+function playerSurface(player) {
+  const fallback = player?.seeded ? multiplayer.surface : "browser";
+  return String(player?.surface || fallback).trim().toLowerCase() || fallback;
+}
+
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(firstNamedIdentity(player?.handle, player?.name, player?.id));
-  const surface = String(player?.surface || "browser").trim().toLowerCase();
+  const surface = playerSurface(player);
   if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}:surface:${surface}`;
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
@@ -108,7 +113,7 @@ function rosterDisplayKey(player) {
 }
 
 function sameSurface(player) {
-  return String(player?.surface || "browser").trim().toLowerCase() === multiplayer.surface;
+  return playerSurface(player) === multiplayer.surface;
 }
 
 function betterVisiblePlayer(current, next) {
@@ -652,7 +657,7 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
   let name = sanitizeDisplayName(firstNamedIdentity(player.name, player.handle), DEFAULT_PLAYER_NAME);
   let handle = sanitizeDisplayName(firstNamedIdentity(player.handle, name), name);
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
-  const surface = String(player.surface || "browser").trim().toLowerCase() || "browser";
+  const surface = playerSurface(player);
   if (surface !== multiplayer.surface) return null;
   const personKey = canonicalRosterKey(handle || name || id);
   if (PERSON_ROSTER_KEYS.has(personKey)) {
