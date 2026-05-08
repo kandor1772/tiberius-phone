@@ -1,4 +1,4 @@
-const CACHE = "tiberius-phone-v72-pc-board-fit";
+const CACHE = "tiberius-phone-v73-public-discovery";
 const ASSETS = [
   "./",
   "index.html",
@@ -16,6 +16,9 @@ const ASSETS = [
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
   "manifest.webmanifest",
+  "robots.txt",
+  "sitemap.xml",
+  "DOWNLOAD.md",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"

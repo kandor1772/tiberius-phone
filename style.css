@@ -95,6 +95,22 @@ button {
   cursor: pointer;
 }
 
+.download-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f1d47f, #bf8426);
+  color: #21170f;
+  font-weight: 900;
+  text-decoration: none;
+  box-shadow:
+    0 0 0 2px #5b351d inset,
+    0 2px 0 rgba(0, 0, 0, 0.18);
+}
+
 button:disabled {
   opacity: 0.45;
 }

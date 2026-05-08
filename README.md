@@ -8,6 +8,18 @@ Live app:
 https://kandor1772.github.io/tiberius-phone/
 ```
 
+Download:
+
+```text
+https://github.com/kandor1772/tiberius-phone/archive/refs/heads/main.zip
+```
+
+Search/discovery:
+
+- The public site includes browser metadata for Tiberius.
+- `robots.txt` points crawlers to `sitemap.xml`.
+- `DOWNLOAD.md` keeps the free download link visible in the repository.
+
 What runs on the phone:
 
 - Board UI
