@@ -1,13 +1,15 @@
-const CACHE = "tiberius-phone-v100-offline-invites";
-const APP_ENTRY = "./?v=offline-invites-v34";
+const CACHE = "tiberius-phone-v101-sticky-badge";
+const APP_ENTRY = "./?v=sticky-badge-v35";
+const NOTIFICATION_STATE_CACHE = "tiberius-notification-state-v1";
+const INVITE_COUNT_ENTRY = "/__tiberius_invite_count";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=offline-invites-v34",
+  "index.html?v=sticky-badge-v35",
   "style.css",
-  "app.js?v=offline-invites-v34",
-  "multiplayer-client.js?v=offline-invites-v34",
+  "app.js?v=sticky-badge-v35",
+  "multiplayer-client.js?v=sticky-badge-v35",
   "tiberius-overlay.js",
-  "stockfish-adapter.js?v=offline-invites-v34",
+  "stockfish-adapter.js?v=sticky-badge-v35",
   "memory-sources.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
@@ -16,7 +18,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=offline-invites-v34",
+  "manifest.webmanifest?v=sticky-badge-v35",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"
@@ -24,6 +26,34 @@ const ASSETS = [
 
 function appUrl() {
   return new URL(APP_ENTRY, self.location.origin).href;
+}
+
+async function setInviteBadge(count) {
+  if ("setAppBadge" in navigator) {
+    await navigator.setAppBadge(count).catch(() => {});
+  }
+}
+
+async function readInviteCount() {
+  const cache = await caches.open(NOTIFICATION_STATE_CACHE);
+  const response = await cache.match(INVITE_COUNT_ENTRY);
+  const state = response ? await response.json().catch(() => ({})) : {};
+  const count = Number(state.count || 0);
+  return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+async function writeInviteCount(count) {
+  const cache = await caches.open(NOTIFICATION_STATE_CACHE);
+  await cache.put(INVITE_COUNT_ENTRY, new Response(JSON.stringify({ count }), {
+    headers: { "Content-Type": "application/json" },
+  }));
+}
+
+async function clearInviteBadge() {
+  await writeInviteCount(0).catch(() => {});
+  if ("clearAppBadge" in navigator) {
+    await navigator.clearAppBadge().catch(() => {});
+  }
 }
 
 self.addEventListener("install", event => {
@@ -66,22 +96,37 @@ self.addEventListener("push", event => {
   } catch (_err) {
     payload = {};
   }
-  const title = payload.title || "Tiberius";
-  const body = payload.body || "New challenge waiting.";
-  event.waitUntil(self.registration.showNotification(title, {
-    body,
-    tag: payload.tag || "tiberius-challenge",
-    renotify: true,
-    icon: "icon.svg",
-    badge: "icon.svg",
-    data: { url: payload.url || appUrl() },
-  }));
+  event.waitUntil((async () => {
+    const tag = payload.tag || "tiberius-challenge";
+    const existing = await self.registration.getNotifications({ tag });
+    const notificationCount = existing.reduce((max, notification) => {
+      const count = Number(notification.data?.count || 0);
+      return Number.isFinite(count) ? Math.max(max, count) : max;
+    }, 0);
+    const previousCount = Math.max(await readInviteCount(), notificationCount);
+    const count = previousCount + 1;
+    await writeInviteCount(count);
+    await setInviteBadge(count);
+    const title = count > 1 ? `Tiberius (${count})` : payload.title || "Tiberius";
+    const body = count > 1 ? `${count} challenges waiting.` : payload.body || "New challenge waiting.";
+    await self.registration.showNotification(title, {
+      body,
+      tag,
+      renotify: true,
+      requireInteraction: true,
+      timestamp: Date.now(),
+      icon: "icon.svg",
+      badge: "icon.svg",
+      data: { url: payload.url || appUrl(), count },
+    });
+  })());
 });
 
 self.addEventListener("notificationclick", event => {
   event.notification.close();
   const targetUrl = event.notification?.data?.url || appUrl();
   event.waitUntil((async () => {
+    await clearInviteBadge();
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of windows) {
       if (new URL(client.url).origin === self.location.origin && "focus" in client) {
@@ -92,4 +137,10 @@ self.addEventListener("notificationclick", event => {
     }
     if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
   })());
+});
+
+self.addEventListener("message", event => {
+  if (event.data?.type !== "tiberius-clear-notification-count") return;
+  const pending = clearInviteBadge();
+  if (event.waitUntil) event.waitUntil(pending);
 });

@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=offline-invites-v34";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=sticky-badge-v35";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=offline-invites-v34";
+import { MultiplayerClient } from "./multiplayer-client.js?v=sticky-badge-v35";
 
-const ASSET_BUILD_ID = "offline-invites-v34";
+const ASSET_BUILD_ID = "sticky-badge-v35";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v100-offline-invites";
+const CURRENT_CACHE = "tiberius-phone-v101-sticky-badge";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
@@ -312,6 +312,11 @@ async function refreshPushSubscription(registration = null) {
     }).catch(() => {});
   }
   return activePushSubscription;
+}
+
+function clearNotificationCount() {
+  if ("clearAppBadge" in navigator) navigator.clearAppBadge().catch(() => {});
+  navigator.serviceWorker?.controller?.postMessage({ type: "tiberius-clear-notification-count" });
 }
 
 async function enableNotifications() {
@@ -1326,6 +1331,7 @@ function startFastHeartbeat(durationMs = 30000) {
 }
 
 function wakeOnlineRelay() {
+  clearNotificationCount();
   startFastHeartbeat(45000);
   heartbeatOnline();
 }
