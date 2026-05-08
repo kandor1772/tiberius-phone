@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=sticky-badge-v35";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=notification-route-v36";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=sticky-badge-v35";
+import { MultiplayerClient } from "./multiplayer-client.js?v=notification-route-v36";
 
-const ASSET_BUILD_ID = "sticky-badge-v35";
+const ASSET_BUILD_ID = "notification-route-v36";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v101-sticky-badge";
+const CURRENT_CACHE = "tiberius-phone-v102-notification-route";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
@@ -791,7 +791,12 @@ function notifyIncomingChallenge(challenge) {
   onlineNotice = `${from} challenged you. Accept or decline below.`;
   if ("Notification" in window && Notification.permission === "granted") {
     try {
-      new Notification("Tiberius challenge", { body: `${from} wants to play.` });
+      const notification = new Notification("Tiberius challenge", { body: `${from} wants to play.` });
+      notification.onclick = () => {
+        window.focus();
+        wakeOnlineRelay();
+        notification.close();
+      };
     } catch (_err) {}
   }
 }

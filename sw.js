@@ -1,15 +1,15 @@
-const CACHE = "tiberius-phone-v101-sticky-badge";
-const APP_ENTRY = "./?v=sticky-badge-v35";
+const CACHE = "tiberius-phone-v102-notification-route";
+const APP_ENTRY = "./?v=notification-route-v36";
 const NOTIFICATION_STATE_CACHE = "tiberius-notification-state-v1";
 const INVITE_COUNT_ENTRY = "/__tiberius_invite_count";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=sticky-badge-v35",
+  "index.html?v=notification-route-v36",
   "style.css",
-  "app.js?v=sticky-badge-v35",
-  "multiplayer-client.js?v=sticky-badge-v35",
+  "app.js?v=notification-route-v36",
+  "multiplayer-client.js?v=notification-route-v36",
   "tiberius-overlay.js",
-  "stockfish-adapter.js?v=sticky-badge-v35",
+  "stockfish-adapter.js?v=notification-route-v36",
   "memory-sources.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
@@ -18,14 +18,26 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=sticky-badge-v35",
+  "manifest.webmanifest?v=notification-route-v36",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"
 ];
 
 function appUrl() {
-  return new URL(APP_ENTRY, self.location.origin).href;
+  return new URL(APP_ENTRY, self.registration.scope).href;
+}
+
+function normalizeAppUrl(value) {
+  const fallback = appUrl();
+  try {
+    const url = new URL(value || fallback, self.registration.scope);
+    const scope = new URL(self.registration.scope);
+    if (url.origin !== scope.origin || !url.pathname.startsWith(scope.pathname)) return fallback;
+    return url.href;
+  } catch (_err) {
+    return fallback;
+  }
 }
 
 async function setInviteBadge(count) {
@@ -124,12 +136,14 @@ self.addEventListener("push", event => {
 
 self.addEventListener("notificationclick", event => {
   event.notification.close();
-  const targetUrl = event.notification?.data?.url || appUrl();
+  const targetUrl = normalizeAppUrl(event.notification?.data?.url);
   event.waitUntil((async () => {
     await clearInviteBadge();
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    const scope = new URL(self.registration.scope);
     for (const client of windows) {
-      if (new URL(client.url).origin === self.location.origin && "focus" in client) {
+      const clientUrl = new URL(client.url);
+      if (clientUrl.origin === scope.origin && clientUrl.pathname.startsWith(scope.pathname) && "focus" in client) {
         await client.focus();
         client.postMessage?.({ type: "tiberius-notification-opened" });
         return;
