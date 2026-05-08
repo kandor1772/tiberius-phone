@@ -1,23 +1,14 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=c0d008d3";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v6";
 
-const BUILD_ID = "c0d008d";
-const ASSET_BUILD_ID = "c0d008d3";
+const BUILD_ID = "authoritative-relay";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v6";
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = `tiberius-phone-v87-${ASSET_BUILD_ID}`;
+const CURRENT_CACHE = `tiberius-phone-v71-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
-
-function detectDefaultPlayerName() {
-  const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
-  const ua = String(typeof navigator !== "undefined" ? navigator.userAgent || "" : "").toLowerCase();
-  if (/(iphone|ipad|ipod|android|mobile)/i.test(platform) || /(iphone|ipad|ipod|android|mobile)/i.test(ua)) return "RayPalmer";
-  if (/mac/i.test(platform) || /mac os/i.test(ua)) return "Dr. Oz";
-  return "Mork";
-}
-
-const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
+const DEFAULT_PLAYER_NAME = "";
 const SOLUTION_TARGETS = {
   successfulMoves: 100000,
   exactPositions: 50000,
@@ -26,21 +17,6 @@ const SOLUTION_TARGETS = {
 };
 const TEST_PROFILE_PATTERN = /^(anon(?:-|$)|cf-test|lan-test|local-|public-|ray-(?:test|lan|cf|clean|move|win)|norma-(?:test|lan|cf|clean|move|win)|codex-smoke)/i;
 
-function purgeLegacyAppStorage() {
-  try {
-    const keys = [];
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (key && key.startsWith("tiberius-phone-")) keys.push(key);
-    }
-    for (const key of keys) localStorage.removeItem(key);
-  } catch (_err) {}
-}
-
-function selfDisplayName() {
-  return DEFAULT_PLAYER_NAME;
-}
-
 function identityKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -48,16 +24,13 @@ function identityKey(value) {
 function canonicalRosterKey(value) {
   const key = identityKey(value);
   if (/^mo(?:r(?:k|t(?:i(?:m(?:er?)?)?)?)?)?$/.test(key)) return "mork";
-  if (/^dr(?:\.|\s)?oz$/.test(key) || key === "droz") return "droz";
-  if (key === "raypalmer") return "raypalmer";
   return key;
 }
 
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
   if (personKey === "mork") return "person:mork";
-  if (personKey === "droz") return "person:droz";
-  if (personKey === "raypalmer") return "person:raypalmer";
+  if (personKey === "liamz") return "person:liamz";
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
   return personKey;
@@ -167,9 +140,11 @@ const PHONE_STATE_KEY = "tiberius-phone-state-v5-core";
 const SAVED_GAMES_KEY = "tiberius-phone-saved-games-v1";
 const SUSPENDED_GAME_KEY = "tiberius-phone-suspended-game-v1";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
-const PUBLIC_RELAY = "https://eltiburon.duckdns.org";
-const SYNC_ENDPOINTS = [`${PUBLIC_RELAY}/api/phone-sync`];
-const MULTIPLAYER_ENDPOINTS = [`${PUBLIC_RELAY}/api/multiplayer`];
+const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
+const MULTIPLAYER_ENDPOINTS = [
+  "https://cars-reduced-list-contests.trycloudflare.com",
+  "https://eltiburon.duckdns.org/api/multiplayer",
+];
 const multiplayer = new MultiplayerClient({ endpoints: MULTIPLAYER_ENDPOINTS });
 
 function canonicalizeBuildUrl() {
@@ -397,14 +372,14 @@ function onlineSummary() {
   const available = isOnlineGame()
     ? "busy in a human game; sending a new invite will forfeit it first"
     : gameActive && !gameResult ? "available for human invites" : "unavailable until a board is active";
-  const handle = selfDisplayName() ? ` Handle: ${selfDisplayName()}.` : "";
+  const handle = multiplayer.player.handle ? ` Handle: ${multiplayer.player.handle}.` : "";
   const opponent = onlineGame ? ` Online game vs ${onlineGame.opponent || "player"}.` : "";
   const selectedPlayer = selectedPlayerId ? knownPlayers.find(player => player.id === selectedPlayerId) : null;
   const selected = selectedPlayer
     ? ` Selected ${selectedPlayer.name}${selectedPlayer.active ? " (active)" : ""}.`
     : " No player selected: Play Human will look for a random player.";
   const notice = onlineNotice ? ` ${onlineNotice}` : "";
-  onlineStatusEl.textContent = `${relay}. ${selfDisplayName()} is ${available}.${handle}${opponent}${selected}${notice}`;
+  onlineStatusEl.textContent = `${relay}. ${multiplayer.label()} is ${available}.${handle}${opponent}${selected}${notice}`;
   incomingChallengeEl.classList.toggle("hidden", !incomingChallenge);
   if (incomingChallenge) {
     const from = incomingChallenge.from_name || incomingChallenge.from || "A player";
@@ -421,11 +396,11 @@ function playerLabel(id) {
 }
 
 function currentPlayerRecord() {
-  const label = selfDisplayName();
+  const label = multiplayer.label();
   return {
-    id: canonicalHandle(label),
+    id: multiplayer.player.id,
     name: label || "Enter handle",
-    handle: canonicalHandle(label),
+    handle: multiplayer.player.handle || "",
     device_id: multiplayer.player.device_id || "",
     active: true,
     available: true,
@@ -440,9 +415,14 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
   let handle = String(player.handle || "").trim();
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
   const personKey = canonicalRosterKey(handle || name || id);
+  if (personKey === "liamz") {
+    id = "liamz";
+    name = "liamz";
+    handle = "liamz";
+  }
   const active = Boolean(player.active || player.available || player.status === "active");
   const seeded = Boolean(player.seeded);
-  if (!active && !seeded) return null;
+  if (!active && !seeded && personKey !== "liamz") return null;
   return {
     id,
     name,
@@ -554,11 +534,9 @@ function notifyIncomingChallenge(challenge) {
 
 function syncOnlineName({ heartbeat = false } = {}) {
   saveState("profile_before_switch", { sync: false });
-  const desiredName = selfDisplayName();
   const before = multiplayer.label();
   const beforeScope = profileScope();
-  onlineNameInput.value = desiredName;
-  multiplayer.setName(desiredName);
+  multiplayer.setName(onlineNameInput.value);
   if (profileScope() !== beforeScope) {
     phoneMemory = makePhoneMemory();
     loadPhoneMemory();
@@ -1128,7 +1106,7 @@ async function heartbeatOnline() {
   if (heartbeatInFlight) return;
   heartbeatInFlight = true;
   try {
-    multiplayer.setName(selfDisplayName());
+    multiplayer.setName(onlineNameInput.value);
     const data = await multiplayer.heartbeat({ ...gameSnapshot(), progress: progressPayload() });
     handleOnlineResponse(data);
   } finally {
@@ -1524,8 +1502,8 @@ async function loadMemoryPhase(manifest, phase) {
       addMemorySource(memory);
       loadedMemorySources.push(source.label || source.url);
     } catch (_err) {
+      failedMemorySources.push(source.label || source.url);
       if (source.required) {
-        failedMemorySources.push(source.label || source.url);
         addMemorySource(emptyMemory({ source_label: `${source.label || source.url} unavailable`, group: source.group || source.url }));
       }
     }
@@ -1534,17 +1512,14 @@ async function loadMemoryPhase(manifest, phase) {
 }
 
 async function boot() {
-  purgeLegacyAppStorage();
-  if (typeof multiplayer.resetIdentity === "function") {
-    multiplayer.resetIdentity(selfDisplayName());
-  } else {
-    multiplayer.repairIdentity(selfDisplayName());
-  }
-  onlineNameInput.value = selfDisplayName();
+  multiplayer.repairIdentity(DEFAULT_PLAYER_NAME);
+  onlineNameInput.value = multiplayer.player.name || "";
   mergePlayers([]);
   render();
   loadPhoneMemory();
-  multiplayer.setName(selfDisplayName());
+  if (onlineNameInput.value) {
+    multiplayer.setName(onlineNameInput.value);
+  }
   const restored = loadSavedState();
   if (!restored) {
     humanColor = "b";

@@ -1,42 +1,20 @@
-const PLAYER_KEY = "tiberius-phone-player-v3";
+const PLAYER_KEY = "tiberius-phone-player-v1";
 const NTFY_SEEN_KEY = "tiberius-phone-ntfy-seen-v2";
 const NTFY_BASE = "https://ntfy.sh";
 const NTFY_PREFIX = "tiberius-phone-chess-v2";
-const ROSTER_KEY = "tiberius-phone-public-roster-v8";
+const ROSTER_KEY = "tiberius-phone-public-roster-v6";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
 const RELAY_TIMEOUT_MS = 8_000;
-
-function detectDefaultPlayerName() {
-  const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
-  const ua = String(typeof navigator !== "undefined" ? navigator.userAgent || "" : "").toLowerCase();
-  if (/(iphone|ipad|ipod|android|mobile)/i.test(platform) || /(iphone|ipad|ipod|android|mobile)/i.test(ua)) return "RayPalmer";
-  if (/mac/i.test(platform) || /mac os/i.test(ua)) return "Dr. Oz";
-  return "Mork";
-}
-
-const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
+const DEFAULT_PLAYER_NAME = "";
 const FALLBACK_PLAYERS = [
   { id: "rick", name: "rick", active: false, available: false, seeded: true },
   { id: "queenorma", name: "QueeNorma", active: false, available: false, seeded: true },
 ];
 
-function removePrefixedStorage(prefix) {
-  try {
-    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-      const key = localStorage.key(index);
-      if (key && key.startsWith(prefix)) localStorage.removeItem(key);
-    }
-  } catch (_err) {}
-}
-
 function canonicalHandle(name) {
   const handle = safeTopicPart(name).replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
   return handle.length >= 2 ? handle : "";
-}
-
-function runtimePlatform() {
-  return String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || "") : "").trim();
 }
 
 function isAnonIdentity(value) {
@@ -51,16 +29,13 @@ function identityKey(value) {
 function canonicalRosterKey(value) {
   const key = identityKey(value);
   if (/^mo(?:r(?:k|t(?:i(?:m(?:er?)?)?)?)?)?$/.test(key)) return "mork";
-  if (/^dr(?:\.|\s)?oz$/.test(key) || key === "droz") return "droz";
-  if (key === "raypalmer") return "raypalmer";
   return key;
 }
 
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
   if (personKey === "mork") return "person:mork";
-  if (personKey === "droz") return "person:droz";
-  if (personKey === "raypalmer") return "person:raypalmer";
+  if (personKey === "liamz") return "person:liamz";
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
   if (deviceId) return `device:${deviceId}`;
   return personKey;
@@ -124,24 +99,6 @@ function mergeLists(...lists) {
   return out;
 }
 
-function mergeProgress(current = {}, incoming = {}) {
-  const merged = { ...(current || {}) };
-  for (const key of [
-    "successful_moves_learned",
-    "stockfish_training_anchors",
-    "stockfish_training_positions",
-    "stockfish_agreements",
-    "completed_games_evaluated",
-    "exact_positions",
-  ]) {
-    const next = Number(incoming?.[key] || 0);
-    const prev = Number(merged[key] || 0);
-    if (next > prev) merged[key] = next;
-  }
-  if (incoming?.updated_at) merged.updated_at = incoming.updated_at;
-  return merged;
-}
-
 function seenKeyFor(playerId) {
   return `${NTFY_SEEN_KEY}:${safeTopicPart(playerId)}`;
 }
@@ -183,27 +140,24 @@ function writeRoster(roster) {
 
 function clearLegacyRosterStorage() {
   try {
-    removePrefixedStorage("tiberius-phone-public-roster-v");
-    removePrefixedStorage("tiberius-phone-player-v");
-    localStorage.removeItem(ROSTER_KEY);
-    localStorage.removeItem(PLAYER_KEY);
+    localStorage.removeItem("tiberius-phone-public-roster-v1");
+    localStorage.removeItem("tiberius-phone-public-roster-v2");
+    localStorage.removeItem("tiberius-phone-public-roster-v3");
+    localStorage.removeItem("tiberius-phone-public-roster-v4");
+    localStorage.removeItem("tiberius-phone-public-roster-v5");
   } catch (_err) {}
 }
 
-function stableId(defaultName = DEFAULT_PLAYER_NAME) {
-  const targetName = String(defaultName || "").trim();
-  let deviceId = "";
+function stableId() {
   try {
     const saved = JSON.parse(localStorage.getItem(PLAYER_KEY));
-    deviceId = String(saved?.device_id || saved?.deviceId || "").trim();
+    if (saved?.id) {
+      const normalized = normalizePlayerIdentity(isAnonIdentity(saved?.id) || isAnonIdentity(saved?.name) ? { ...saved, name: "" } : saved);
+      localStorage.setItem(PLAYER_KEY, JSON.stringify(normalized));
+      return normalized;
+    }
   } catch (_err) {}
-  const player = normalizePlayerIdentity({
-    id: canonicalHandle(targetName) || targetName.toLowerCase(),
-    name: targetName || "Mork",
-    handle: canonicalHandle(targetName) || "mork",
-    device_id: deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
-    aliases: [],
-  });
+  const player = normalizePlayerIdentity({ name: "" });
   try {
     localStorage.setItem(PLAYER_KEY, JSON.stringify(player));
   } catch (_err) {}
@@ -214,7 +168,7 @@ export class MultiplayerClient {
   constructor({ endpoints = [] } = {}) {
     this.endpoints = endpoints;
     clearLegacyRosterStorage();
-    this.player = stableId(DEFAULT_PLAYER_NAME);
+    this.player = stableId();
     this.connected = false;
     this.lastError = "";
     this.transport = "";
@@ -224,13 +178,6 @@ export class MultiplayerClient {
     for (const player of FALLBACK_PLAYERS) this.rememberRosterPlayer(player);
     for (const player of Object.values(readRoster())) this.rememberRosterPlayer(player);
     this.lastPresenceAt = 0;
-  }
-
-  resetIdentity(defaultName = DEFAULT_PLAYER_NAME) {
-    clearLegacyRosterStorage();
-    this.player = stableId(defaultName);
-    this.lastPresenceAt = 0;
-    return this.player;
   }
 
   setName(name) {
@@ -244,17 +191,15 @@ export class MultiplayerClient {
   }
 
   label() {
-    return this.player.name || DEFAULT_PLAYER_NAME;
+    return this.player.name || "";
   }
 
   repairIdentity(defaultName = DEFAULT_PLAYER_NAME) {
-    const desiredName = String(defaultName || "").trim();
     const id = String(this.player?.id || "");
     const name = String(this.player?.name || "").trim();
-    if (desiredName && identityKey(name) === identityKey(desiredName) && identityKey(id) === identityKey(desiredName)) return false;
-    if (name && !isAnonIdentity(name) && !isAnonIdentity(id) && !desiredName) return false;
+    if (name && !isAnonIdentity(name) && !isAnonIdentity(id)) return false;
     const aliases = [...(this.player.aliases || []), id].filter(Boolean);
-    this.player = normalizePlayerIdentity({ ...this.player, name: desiredName || defaultName || "", aliases });
+    this.player = normalizePlayerIdentity({ ...this.player, name: defaultName, aliases });
     try {
       localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
     } catch (_err) {}
@@ -280,7 +225,6 @@ export class MultiplayerClient {
     const body = {
       player: { ...this.player, progress: payload?.progress || null },
       client: "tiberius-phone-github-pages",
-      platform: runtimePlatform(),
       payload,
     };
     for (const endpoint of this.endpoints) {
@@ -323,6 +267,10 @@ export class MultiplayerClient {
     let id = canonicalHandle(player?.id || player?.name || player?.handle);
     let name = String(player?.name || player?.handle || id || "").trim().slice(0, 32);
     const personKey = canonicalRosterKey(player?.handle || name || id);
+    if (personKey === "liamz") {
+      id = "liamz";
+      name = "liamz";
+    }
     if (DEFAULT_PLAYER_NAME && [id, name, player?.handle].some(value => identityKey(value) === identityKey(DEFAULT_PLAYER_NAME))) {
       id = canonicalHandle(DEFAULT_PLAYER_NAME);
       name = DEFAULT_PLAYER_NAME;
@@ -333,7 +281,7 @@ export class MultiplayerClient {
     const record = {
       id,
       name,
-      handle: canonicalHandle(player?.handle || name) || id,
+      handle: personKey === "liamz" ? "liamz" : canonicalHandle(player?.handle || name) || id,
       device_id: String(player?.device_id || player?.deviceId || "").trim(),
       active,
       available: active,
@@ -401,7 +349,7 @@ export class MultiplayerClient {
     return this.publishTopic(this.topicFor(target), message);
   }
 
-  async publishPresence(force = false, state = {}) {
+  async publishPresence(force = false) {
     const now = Date.now();
     if (!force && now - this.lastPresenceAt < PRESENCE_INTERVAL_MS) return false;
     this.lastPresenceAt = now;
@@ -413,10 +361,9 @@ export class MultiplayerClient {
       name: this.label(),
       handle,
       device_id: this.player.device_id,
-      progress: state.progress || null,
       updated_at: now,
     });
-    this.rememberRosterPlayer({ id: handle, name: this.label(), handle, device_id: this.player.device_id, progress: state.progress || null, last_seen: now });
+    this.rememberRosterPlayer({ id: handle, name: this.label(), handle, device_id: this.player.device_id, last_seen: now });
     return true;
   }
 
@@ -424,7 +371,6 @@ export class MultiplayerClient {
     const response = await fetch(`${NTFY_BASE}/${this.rosterTopic()}/json?poll=1&since=5m`, { cache: "no-store" });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     const text = await response.text();
-    let progress = {};
     for (const line of text.split(/\n+/)) {
       if (!line.trim()) continue;
       let envelope;
@@ -446,19 +392,15 @@ export class MultiplayerClient {
         name: message.name || message.handle || message.id,
         handle: message.handle || message.id,
         device_id: message.device_id || message.deviceId,
-        progress: message.progress || null,
         last_seen: Number(message.updated_at || envelope.time * 1000 || Date.now()),
       });
-      progress = mergeProgress(progress, message.progress || {});
     }
-    return { players: this.rosterPlayers(), progress };
+    return this.rosterPlayers();
   }
 
-  async pollNtfy(state = {}) {
-    await this.publishPresence(false, state).catch(() => {});
-    const rosterData = await this.pollRoster().catch(() => ({ players: this.rosterPlayers(), progress: {} }));
-    const roster = Array.isArray(rosterData) ? rosterData : rosterData.players;
-    let progress = Array.isArray(rosterData) ? {} : (rosterData.progress || {});
+  async pollNtfy() {
+    await this.publishPresence().catch(() => {});
+    const roster = await this.pollRoster().catch(() => this.rosterPlayers());
     const seen = readSeen(this.player.id);
     const incoming = [];
     const events = [];
@@ -504,8 +446,6 @@ export class MultiplayerClient {
           events.push({ type: "move", game_id: message.game_id, move: message.move, fen: message.fen, pgn: message.pgn });
         } else if (message.kind === "forfeit") {
           events.push({ type: "forfeit", game_id: message.game_id, from: message.from, reason: message.reason });
-        } else if (message.kind === "progress") {
-          progress = mergeProgress(progress, message.progress || {});
         }
       }
       seen[topic] = [...seenForTopic].slice(-200);
@@ -519,7 +459,6 @@ export class MultiplayerClient {
       players: roster,
       incoming,
       events,
-      progress,
       message: "Relay connected.",
     };
   }
@@ -531,11 +470,9 @@ export class MultiplayerClient {
       this.connected = true;
       return data;
     }
-    return this.pollNtfy(state).catch(() => {
-      this.connected = false;
-      this.transport = "";
-      return null;
-    });
+    this.connected = false;
+    this.transport = "";
+    return null;
   }
 
   async challenge({ target = "", targetName = "", random = false, inviterColor = "w", game }) {
@@ -545,25 +482,8 @@ export class MultiplayerClient {
       this.connected = true;
       return data;
     }
-    const roster = this.rosterPlayers();
-    const chosen = target || (random ? roster.find(player => player.active && player.id !== this.player.id)?.id : "");
-    if (!chosen) return data || { ok: false, players: roster, message: "No active player available." };
-    const challengeId = `ntfy-challenge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    await this.publishNtfy(chosen, {
-      kind: "challenge",
-      id: challengeId,
-      from: this.player.handle || this.player.id,
-      from_name: this.label(),
-      from_device: this.player.device_id,
-      target: chosen,
-      target_name: targetName || chosen,
-      inviter_color: inviterColor,
-      game,
-      created_at: new Date().toISOString(),
-    });
-    this.connected = true;
-    this.transport = "public ntfy relay";
-    return { ok: true, players: roster, message: `Invite sent to ${targetName || chosen}.` };
+    this.connected = false;
+    return data || null;
   }
 
   poke({ target = "", random = false, game }) {
@@ -579,76 +499,16 @@ export class MultiplayerClient {
       return data;
     }
     if (data && (!accept || !challenge)) return data;
-    if (!challenge) return data || null;
-    if (!accept) return { ok: true, message: "Invite declined." };
-    const game = {
-      id: `ntfy-game-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
-      white: challenge.from,
-      black: this.player.handle || this.player.id,
-      inviter_id: challenge.from,
-      accepter_id: this.player.handle || this.player.id,
-      opponent: challenge.from_name || challenge.from,
-      opponent_name: challenge.from_name || challenge.from,
-      opponent_id: challenge.from,
-      color: "b",
-    };
-    await this.publishNtfy(challenge.from, {
-      kind: "game_start",
-      from: this.player.handle || this.player.id,
-      from_name: this.label(),
-      from_device: this.player.device_id,
-      game: {
-        ...game,
-        opponent: this.label(),
-        opponent_name: this.label(),
-        opponent_id: this.player.handle || this.player.id,
-        color: "w",
-      },
-    });
-    this.gamesById.set(game.id, game);
-    this.incomingById.delete(challengeId);
-    this.connected = true;
-    this.transport = "public ntfy relay";
-    return { ok: true, game, message: "Invite accepted." };
+    return data || null;
   }
 
   async move({ gameId, move, fen, pgn }) {
     const data = await this.request("/game/move", { gameId, move, fen, pgn }, RELAY_TIMEOUT_MS);
-    if (data?.ok) return data;
-    const game = this.gamesById.get(gameId);
-    const target = game?.opponent_id || game?.opponent;
-    if (!target) return data || null;
-    await this.publishNtfy(target, {
-      kind: "move",
-      from: this.player.handle || this.player.id,
-      from_name: this.label(),
-      from_device: this.player.device_id,
-      game_id: gameId,
-      move,
-      fen,
-      pgn,
-    });
-    this.connected = true;
-    this.transport = "public ntfy relay";
-    return { ok: true, message: "Move relayed." };
+    return data || null;
   }
 
   async forfeit({ gameId, reason = "interrupted" }) {
     const data = await this.request("/game/forfeit", { gameId, reason }, RELAY_TIMEOUT_MS);
-    if (data?.ok) return data;
-    const game = this.gamesById.get(gameId);
-    const target = game?.opponent_id || game?.opponent;
-    if (!target) return data || null;
-    await this.publishNtfy(target, {
-      kind: "forfeit",
-      from: this.player.handle || this.player.id,
-      from_name: this.label(),
-      from_device: this.player.device_id,
-      game_id: gameId,
-      reason,
-    });
-    this.connected = true;
-    this.transport = "public ntfy relay";
-    return { ok: true, message: "Forfeit relayed." };
+    return data || null;
   }
 }

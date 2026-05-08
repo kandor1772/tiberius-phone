@@ -3,14 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import threading
 import time
 import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import urlparse
 
 
@@ -42,127 +40,17 @@ def canonical_roster_key(value: object) -> str:
     key = identity_key(value)
     if key and re.match(r"^mo(?:r(?:k|t(?:i(?:m(?:er?)?)?)?)?)?$", key):
         return "mork"
-    if key in {"droz", "dr oz", "dr. oz"}:
-        return "droz"
-    if key == "raypalmer":
-        return "raypalmer"
     return key
 
 
-PROGRESS_KEYS = (
-    "successful_moves_learned",
-    "stockfish_training_anchors",
-    "stockfish_training_positions",
-    "stockfish_agreements",
-    "completed_games_evaluated",
-    "exact_positions",
-)
-
-
 class RelayState:
-    def __init__(self, state_path: Path | None = None) -> None:
+    def __init__(self) -> None:
         self.lock = threading.RLock()
-        self.state_path = state_path
         self.players: dict[str, dict] = {}
         self.challenges: dict[str, dict] = {}
         self.games: dict[str, dict] = {}
         self.events: dict[str, list[dict]] = {}
         self.shared_progress: dict[str, object] = {}
-        self.sync_events: list[dict] = []
-        self.memory_snapshot: dict[str, object] = {
-            "positions": {},
-            "global_moves": {},
-            "outcomes": {},
-            "transitions": {},
-            "meta": {
-                "source": "tiberius-always-on-backend",
-                "updated_at": "",
-            },
-        }
-        self.load()
-
-    def load(self) -> None:
-        if not self.state_path or not self.state_path.exists():
-            return
-        try:
-            data = json.loads(self.state_path.read_text(encoding="utf-8"))
-        except Exception:
-            return
-        self.shared_progress = data.get("shared_progress") or {}
-        self.sync_events = data.get("sync_events") or []
-        snapshot = data.get("memory_snapshot")
-        if isinstance(snapshot, dict):
-            self.memory_snapshot = snapshot
-
-    def save(self) -> None:
-        if not self.state_path:
-            return
-        try:
-            self.state_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.state_path.with_suffix(f"{self.state_path.suffix}.tmp")
-            tmp.write_text(json.dumps({
-                "shared_progress": self.shared_progress,
-                "sync_events": self.sync_events[-5000:],
-                "memory_snapshot": self.memory_snapshot,
-                "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            }, separators=(",", ":")), encoding="utf-8")
-            tmp.replace(self.state_path)
-        except Exception:
-            return
-
-    def merge_progress(self, progress: dict | None) -> None:
-        if not isinstance(progress, dict):
-            return
-        for key in PROGRESS_KEYS:
-            current = float(self.shared_progress.get(key) or 0)
-            incoming = float(progress.get(key) or 0)
-            if incoming > current:
-                self.shared_progress[key] = incoming
-        if progress.get("updated_at"):
-            self.shared_progress["updated_at"] = progress["updated_at"]
-        elif any(key in progress for key in PROGRESS_KEYS):
-            self.shared_progress["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-    def update_memory_snapshot_meta(self) -> None:
-        self.memory_snapshot.setdefault("positions", {})
-        self.memory_snapshot.setdefault("global_moves", {})
-        self.memory_snapshot.setdefault("outcomes", {})
-        self.memory_snapshot.setdefault("transitions", {})
-        meta = self.memory_snapshot.setdefault("meta", {})
-        meta["source"] = "tiberius-always-on-backend"
-        meta["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        for key in PROGRESS_KEYS:
-            if key in self.shared_progress:
-                meta[key] = self.shared_progress[key]
-
-    def ingest_phone_sync(self, events: list[dict]) -> dict:
-        accepted = []
-        with self.lock:
-            for event in events:
-                if not isinstance(event, dict):
-                    continue
-                accepted.append(event)
-                payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-                game = event.get("game") if isinstance(event.get("game"), dict) else payload.get("game")
-                progress = payload.get("progress") or event.get("progress")
-                if isinstance(game, dict):
-                    progress = progress or game.get("progress")
-                self.merge_progress(progress if isinstance(progress, dict) else None)
-                if event.get("type") in {"game_complete", "human_game_complete"}:
-                    current = float(self.shared_progress.get("completed_games_evaluated") or 0)
-                    self.shared_progress["completed_games_evaluated"] = current + 1
-            if accepted:
-                self.sync_events.extend(accepted)
-                self.sync_events = self.sync_events[-5000:]
-                self.update_memory_snapshot_meta()
-                self.save()
-            return {
-                "ok": True,
-                "accepted": len(accepted),
-                "progress": self.shared_progress,
-                "memory_url": "/tiberius-memory-lite.json",
-                "message": "Tiberius core sync accepted.",
-            }
 
     def _ids_for(self, player: dict) -> set[str]:
         return normalized_keys(
@@ -179,7 +67,7 @@ class RelayState:
 
     def _roster_key_for_record(self, record: dict) -> str:
         person_key = canonical_roster_key(record.get("handle") or record.get("name") or record.get("id"))
-        if person_key == "mork":
+        if person_key in {"mork", "liamz"}:
             return f"person:{person_key}"
         device_id = self._device_id_for(record)
         if device_id:
@@ -231,15 +119,7 @@ class RelayState:
                 events.append(event)
         return events
 
-    def _canonical_name_for_platform(self, platform: str) -> str:
-        text = str(platform or "").strip().lower()
-        if any(token in text for token in ("iphone", "ipad", "ipod", "android", "mobile")):
-            return "RayPalmer"
-        if "mac" in text:
-            return "Dr. Oz"
-        return "Mork"
-
-    def touch_player(self, player: dict, platform: str = "") -> dict:
+    def touch_player(self, player: dict) -> dict:
         now = time.time()
         self.prune_stale_players()
         device_id = self._device_id_for(player)
@@ -248,10 +128,10 @@ class RelayState:
             player_id = f"anon-{device_id}" if device_id else ""
         name = str(player.get("name") or player_id).strip()
         handle = str(player.get("handle") or name).strip()
-        canonical_name = self._canonical_name_for_platform(platform)
-        name = canonical_name
-        handle = canonical_name
-        player_id = canonical_roster_key(canonical_name)
+        if canonical_roster_key(handle or name or player_id) == "liamz":
+            player_id = "liamz"
+            name = "liamz"
+            handle = "liamz"
         incoming_key = self._roster_key_for_record({
             "id": player_id,
             "name": name,
@@ -342,14 +222,25 @@ class RelayState:
             "created_at": challenge["created_at"],
         }
 
-    def heartbeat(self, player: dict, platform: str = "") -> dict:
+    def heartbeat(self, player: dict) -> dict:
         with self.lock:
-            record = self.touch_player(player, platform)
+            record = self.touch_player(player)
             progress = player.get("progress") or {}
             if isinstance(progress, dict):
-                self.merge_progress(progress)
-                self.update_memory_snapshot_meta()
-                self.save()
+                for key in (
+                    "successful_moves_learned",
+                    "stockfish_training_anchors",
+                    "stockfish_training_positions",
+                    "stockfish_agreements",
+                    "completed_games_evaluated",
+                    "exact_positions",
+                ):
+                    current = float(self.shared_progress.get(key) or 0)
+                    incoming = float(progress.get(key) or 0)
+                    if incoming > current:
+                        self.shared_progress[key] = incoming
+                if progress.get("updated_at"):
+                    self.shared_progress["updated_at"] = progress["updated_at"]
             player_events = self.pop_events_for(record)
             return {
                 "ok": True,
@@ -360,9 +251,9 @@ class RelayState:
                 "message": "Relay connected.",
             }
 
-    def challenge(self, player: dict, payload: dict, platform: str = "") -> dict:
+    def challenge(self, player: dict, payload: dict) -> dict:
         with self.lock:
-            sender = self.touch_player(player, platform)
+            sender = self.touch_player(player)
             target = str(payload.get("target") or "").strip()
             target_name = str(payload.get("targetName") or target).strip()
             target_handle = str(payload.get("targetHandle") or target_name or target).strip()
@@ -394,9 +285,9 @@ class RelayState:
                 "message": f"Invite sent to {target_name or target_handle or target}.",
             }
 
-    def respond(self, player: dict, payload: dict, platform: str = "") -> dict:
+    def respond(self, player: dict, payload: dict) -> dict:
         with self.lock:
-            responder = self.touch_player(player, platform)
+            responder = self.touch_player(player)
             challenge_id = str(payload.get("challengeId") or "").strip()
             accept = bool(payload.get("accept"))
             challenge = self.challenges.get(challenge_id)
@@ -435,9 +326,9 @@ class RelayState:
                 "message": "Invite accepted.",
             }
 
-    def move(self, player: dict, payload: dict, platform: str = "") -> dict:
+    def move(self, player: dict, payload: dict) -> dict:
         with self.lock:
-            sender = self.touch_player(player, platform)
+            sender = self.touch_player(player)
             game_id = str(payload.get("gameId") or "").strip()
             game = self.games.get(game_id)
             if not game:
@@ -455,9 +346,9 @@ class RelayState:
                 })
             return {"ok": True, "players": self.roster(), "message": "Move relayed."}
 
-    def forfeit(self, player: dict, payload: dict, platform: str = "") -> dict:
+    def forfeit(self, player: dict, payload: dict) -> dict:
         with self.lock:
-            sender = self.touch_player(player, platform)
+            sender = self.touch_player(player)
             game_id = str(payload.get("gameId") or "").strip()
             game = self.games.pop(game_id, None)
             if game:
@@ -488,32 +379,12 @@ class RelayHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def _send_text(self, text: str, content_type: str = "text/plain; charset=utf-8", status: int = 200) -> None:
-        raw = text.encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(raw)))
-        self.end_headers()
-        self.wfile.write(raw)
-
     def do_OPTIONS(self) -> None:
         self._send_json({"ok": True})
 
     def do_GET(self) -> None:
-        path = urlparse(self.path).path
-        if path == "/health":
-            self._send_json({
-                "ok": True,
-                "service": "tiberius-always-on-backend",
-                "progress": self.server.state.shared_progress,
-            })
-            return
-        if path == "/tiberius-memory-lite.json":
-            self._send_text(json.dumps(self.server.state.memory_snapshot), "application/json; charset=utf-8")
+        if urlparse(self.path).path == "/health":
+            self._send_json({"ok": True, "service": "tiberius-multiplayer-relay"})
             return
         self.send_error(HTTPStatus.NOT_FOUND)
 
@@ -522,22 +393,18 @@ class RelayHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0") or "0")
             body = json.loads(self.rfile.read(length).decode("utf-8") if length else "{}")
             player = body.get("player") or {}
-            platform = str(body.get("platform") or "").strip()
             payload = body.get("payload") or {}
             path = urlparse(self.path).path
-            if path == "/api/phone-sync" or path.endswith("/phone-sync"):
-                events = body.get("events") or []
-                data = self.server.state.ingest_phone_sync(events if isinstance(events, list) else [])
-            elif path.endswith("/heartbeat"):
-                data = self.server.state.heartbeat(player, platform)
+            if path.endswith("/heartbeat"):
+                data = self.server.state.heartbeat(player)
             elif path.endswith("/challenge/respond"):
-                data = self.server.state.respond(player, payload, platform)
+                data = self.server.state.respond(player, payload)
             elif path.endswith("/challenge"):
-                data = self.server.state.challenge(player, payload, platform)
+                data = self.server.state.challenge(player, payload)
             elif path.endswith("/game/move"):
-                data = self.server.state.move(player, payload, platform)
+                data = self.server.state.move(player, payload)
             elif path.endswith("/game/forfeit"):
-                data = self.server.state.forfeit(player, payload, platform)
+                data = self.server.state.forfeit(player, payload)
             else:
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
@@ -550,19 +417,18 @@ class RelayHandler(BaseHTTPRequestHandler):
 
 
 class RelayServer(ThreadingHTTPServer):
-    def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler], state_path: Path | None = None):
+    def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler]):
         super().__init__(address, handler)
-        self.state = RelayState(state_path)
+        self.state = RelayState()
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
-    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8776")))
-    parser.add_argument("--state-path", default=os.environ.get("TIBERIUS_STATE_PATH", "state/tiberius-backend-state.json"))
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8776)
     args = parser.parse_args()
-    server = RelayServer((args.host, args.port), RelayHandler, Path(args.state_path))
-    print(f"Tiberius always-on backend running at http://{args.host}:{args.port}", flush=True)
+    server = RelayServer((args.host, args.port), RelayHandler)
+    print(f"Tiberius multiplayer relay running at http://{args.host}:{args.port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

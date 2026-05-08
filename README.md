@@ -8,18 +8,6 @@ Live app:
 https://kandor1772.github.io/tiberius-phone/
 ```
 
-Download:
-
-```text
-https://github.com/kandor1772/tiberius-phone/archive/refs/heads/main.zip
-```
-
-Search/discovery:
-
-- The public site includes browser metadata for Tiberius.
-- `robots.txt` points crawlers to `sitemap.xml`.
-- `DOWNLOAD.md` keeps the free download link visible in the repository.
-
 What runs on the phone:
 
 - Board UI
@@ -34,7 +22,7 @@ What runs on the phone:
 - Tiberius-core sync outbox for game progress, moves, concessions, and completed games
 - Start as White, start as Black, concede, reset board, move list, FEN, and analysis panels
 - Saved Games panel to resume recent games
-- Black-side start: Tiberius waits for the Stockfish anchor before making White's first move
+- DuckDNS-style Black start: Tiberius waits for the Stockfish anchor before making White's first move
 - Black-side board orientation uses the actual square lookup for each flipped coordinate, so the visible board and legal move targets match
 - Online play panel with a selectable roster, seeded `RP` and `rick`, active/inactive player status, invite notifications, and one `Play Human` action
 
@@ -47,9 +35,8 @@ Game Persistence:
 Multiplayer:
 
 - The static app includes the client-side online play surface and relay calls.
-- Live matchmaking requires the always-on backend at `https://eltiburon.duckdns.org/api/multiplayer`.
+- Live matchmaking requires a relay at `https://eltiburon.duckdns.org/api/multiplayer`.
 - [MULTIPLAYER_RELAY.md](MULTIPLAYER_RELAY.md) documents the endpoint contract and large-traffic guardrails.
-- [ALWAYS_ON_BACKEND.md](ALWAYS_ON_BACKEND.md) documents the combined sync, progress, memory snapshot, and multiplayer backend that should run on a cloud host if both computers may be off.
 
 Bundled engine:
 
@@ -65,7 +52,7 @@ Memory:
 
 Reconstruction:
 
-- [PORTFOLIO_RECONSTRUCTION.md](PORTFOLIO_RECONSTRUCTION.md) documents the architecture, file map, local run commands, GitHub Pages deployment, memory provenance, and the original sync contract.
+- [PORTFOLIO_RECONSTRUCTION.md](PORTFOLIO_RECONSTRUCTION.md) documents the architecture, file map, local run commands, GitHub Pages deployment, memory provenance, and the sync contract needed for DuckDNS/cloud ingestion.
 
 Local test:
 
@@ -83,11 +70,3 @@ http://127.0.0.1:8088
 Static hosting:
 
 This repository is configured for GitHub Pages from `main` at the repository root. Any static host can serve the same files.
-
-Always-on sync:
-
-GitHub Pages keeps the app online. The live dialogue/progress path needs the backend in `multiplayer_relay.py` running behind the public `eltiburon.duckdns.org` endpoint.
-
-Fallback relay:
-
-If DuckDNS is unavailable, active browsers fall back to public `ntfy.sh` topics for presence, progress counters, challenges, moves, and forfeits. This lets active clients keep talking while both computers are off, but it is not permanent Tiberius core storage.

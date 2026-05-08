@@ -159,9 +159,9 @@ Each event carries:
 
 Important constraint:
 
-DuckDNS is only the public name. It must point at a running service. To keep sync working while the Mac and Windows PC are off, run `multiplayer_relay.py` as the always-on cloud backend described in `ALWAYS_ON_BACKEND.md`.
+DuckDNS points at the Mac-hosted Tiberius server. If the Mac is off, DuckDNS cannot receive writes unless a separate always-on cloud endpoint exists. The phone app therefore keeps events in local storage until a receiver accepts them.
 
-The combined backend now supports the same `/api/phone-sync` contract, multiplayer endpoints under `/api/multiplayer`, shared progress from heartbeats, and `GET /tiberius-memory-lite.json` for a live memory/progress snapshot.
+To make sync work while the Mac is off, add a cloud receiver with the same `/api/phone-sync` contract, then have both the Mac-side DuckDNS app and the phone app read/write that shared store.
 
 ## Local Run
 

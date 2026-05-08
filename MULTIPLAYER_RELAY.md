@@ -1,14 +1,12 @@
 # Multiplayer Relay Contract
 
-GitHub Pages can host the Tiberius phone app, but it cannot hold live matchmaking or shared progress state. Online play and global progress need the always-on backend at:
+GitHub Pages can host the Tiberius phone app, but it cannot hold live matchmaking state. Online play needs a relay at:
 
 ```text
 https://eltiburon.duckdns.org/api/multiplayer
 ```
 
-The browser client is already prepared for this relay. The same backend also accepts `POST /api/phone-sync` and serves `GET /tiberius-memory-lite.json`, so phone/browser learning, multiplayer state, and the progress bar can stay in dialogue through one always-on service. Until the endpoint exists, the online panel stays safe: it shows relay unavailable, keeps the chess engine working, and does not crash the app.
-
-If the DuckDNS backend is down, the client falls back to public `ntfy.sh` topics for active-client presence, progress sharing, challenges, moves, and forfeits. That fallback keeps active browsers connected without a server account, but it should be treated as transient relay traffic rather than permanent Tiberius core storage.
+The browser client is already prepared for this relay. Until the endpoint exists, the online panel stays safe: it shows relay unavailable, keeps the chess engine working, and does not crash the app.
 
 ## Availability Rule
 
