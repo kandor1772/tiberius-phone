@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=notifications-v33";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=offline-invites-v34";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=notifications-v33";
+import { MultiplayerClient } from "./multiplayer-client.js?v=offline-invites-v34";
 
-const ASSET_BUILD_ID = "notifications-v33";
+const ASSET_BUILD_ID = "offline-invites-v34";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v99-notifications";
+const CURRENT_CACHE = "tiberius-phone-v100-offline-invites";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
@@ -569,7 +569,7 @@ function onlineSummary() {
     ? knownPlayers.find(player => playerSelectionKey(player) === selectedPlayerId || player.id === selectedPlayerId || player.name === selectedPlayerId || player.device_id === selectedPlayerId)
     : null;
   const selected = selectedPlayer
-    ? ` Selected ${selectedPlayer.name}${selectedPlayer.active ? " (active)" : ""}.`
+    ? ` Selected ${selectedPlayer.name} (${selectedPlayer.active ? "active" : "inactive"}).`
     : " No player selected: Play Human will look for a random player.";
   const notice = onlineNotice ? ` ${onlineNotice}` : "";
   onlineStatusEl.textContent = `${relay}. ${multiplayer.label()} is ${available}.${handle}${opponent}${selected}${notice}`;
@@ -760,9 +760,9 @@ function renderRoster() {
     button.className = `player-row ${player.active ? "active" : "inactive"}`;
     if (selectionKey === selectedPlayerId) button.classList.add("selected-player");
     button.dataset.playerId = selectionKey;
-    button.disabled = !player.active;
-    button.setAttribute("aria-disabled", String(button.disabled));
-    button.innerHTML = `<span>${player.name}</span><strong>${player.active ? "active" : "known"}</strong>`;
+    button.disabled = false;
+    button.setAttribute("aria-disabled", "false");
+    button.innerHTML = `<span>${player.name}</span><strong>${player.active ? "active" : "inactive"}</strong>`;
     button.addEventListener("click", () => {
       selectedPlayerId = selectedPlayerId === selectionKey ? "" : selectionKey;
       render();

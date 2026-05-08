@@ -1,13 +1,13 @@
-const CACHE = "tiberius-phone-v99-notifications";
-const APP_ENTRY = "./?v=notifications-v33";
+const CACHE = "tiberius-phone-v100-offline-invites";
+const APP_ENTRY = "./?v=offline-invites-v34";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=notifications-v33",
+  "index.html?v=offline-invites-v34",
   "style.css",
-  "app.js?v=notifications-v33",
-  "multiplayer-client.js?v=notifications-v33",
+  "app.js?v=offline-invites-v34",
+  "multiplayer-client.js?v=offline-invites-v34",
   "tiberius-overlay.js",
-  "stockfish-adapter.js?v=notifications-v33",
+  "stockfish-adapter.js?v=offline-invites-v34",
   "memory-sources.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
@@ -16,7 +16,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=notifications-v33",
+  "manifest.webmanifest?v=offline-invites-v34",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"
