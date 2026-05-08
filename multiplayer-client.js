@@ -26,8 +26,14 @@ function identityKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function canonicalRosterKey(value) {
+  const key = identityKey(value);
+  if (/^mork/.test(key)) return "mork";
+  return key;
+}
+
 function rosterIdentityKey(player) {
-  return identityKey(player?.handle || player?.name || player?.id);
+  return canonicalRosterKey(player?.handle || player?.name || player?.id);
 }
 
 function betterRosterRecord(current, next) {
@@ -55,13 +61,13 @@ function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
   const deviceId = player?.device_id || player?.deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const aliases = new Set(preserveAliases && Array.isArray(player?.aliases) ? player.aliases : []);
   if (preserveAliases && player?.id && !isAnonIdentity(player.id) && player.id !== id) aliases.add(player.id);
-  const ownKeys = new Set([id, name, handle].map(identityKey).filter(Boolean));
+  const ownKeys = new Set([id, name, handle].map(canonicalRosterKey).filter(Boolean));
   return {
     id,
     name,
     handle: handle || "",
     device_id: deviceId,
-    aliases: [...aliases].filter(alias => !ownKeys.has(identityKey(alias))).slice(0, 8),
+    aliases: [...aliases].filter(alias => !ownKeys.has(canonicalRosterKey(alias))).slice(0, 8),
   };
 }
 
@@ -263,7 +269,7 @@ export class MultiplayerClient {
     };
     const key = rosterIdentityKey(record);
     const existingKey = [...this.rosterById.entries()]
-      .find(([existingId, existingPlayer]) => identityKey(existingId) === key || rosterIdentityKey(existingPlayer) === key)?.[0];
+      .find(([existingId, existingPlayer]) => canonicalRosterKey(existingId) === key || rosterIdentityKey(existingPlayer) === key)?.[0];
     this.rosterById.set(existingKey || record.id, betterRosterRecord(existingKey ? this.rosterById.get(existingKey) : null, record));
   }
 

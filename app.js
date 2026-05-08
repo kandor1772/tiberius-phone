@@ -1,9 +1,9 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=roster-dedupe";
+import { MultiplayerClient } from "./multiplayer-client.js?v=mork-roster-dedupe";
 
-const BUILD_ID = "roster-dedupe";
+const BUILD_ID = "mork-roster-dedupe";
 const CACHE_PREFIX = "tiberius-phone-";
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
@@ -19,8 +19,14 @@ function identityKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function canonicalRosterKey(value) {
+  const key = identityKey(value);
+  if (/^mork/.test(key)) return "mork";
+  return key;
+}
+
 function rosterIdentityKey(player) {
-  return identityKey(player?.handle || player?.name || player?.id);
+  return canonicalRosterKey(player?.handle || player?.name || player?.id);
 }
 
 function betterRosterRecord(current, next) {
@@ -414,17 +420,17 @@ function mergePlayers(players = []) {
     String(multiplayer.player.handle || ""),
     String(multiplayer.player.name || ""),
   ].filter(Boolean));
-  const selfKeys = new Set([...selfIds, self.id, self.name].map(identityKey).filter(Boolean));
+  const canonicalSelfKeys = new Set([...selfIds, self.id, self.name].map(canonicalRosterKey).filter(Boolean));
   const visibleKnownPlayers = knownPlayers.filter(player => (
     player.id !== "RP"
     && player.name !== "RP"
-    && !selfKeys.has(identityKey(player.id))
-    && !selfKeys.has(identityKey(player.name))
+    && !canonicalSelfKeys.has(canonicalRosterKey(player.id))
+    && !canonicalSelfKeys.has(canonicalRosterKey(player.name))
   ));
   const map = new Map();
   const remember = player => {
     const key = rosterIdentityKey(player);
-    if (!key || selfKeys.has(key)) return;
+    if (!key || canonicalSelfKeys.has(key)) return;
     map.set(key, betterRosterRecord(map.get(key), player));
   };
   for (const player of visibleKnownPlayers) remember(player);
@@ -435,8 +441,8 @@ function mergePlayers(players = []) {
     if (
       selfIds.has(player.id)
       || selfIds.has(player.name)
-      || selfKeys.has(identityKey(player.id))
-      || selfKeys.has(identityKey(player.name))
+      || canonicalSelfKeys.has(canonicalRosterKey(player.id))
+      || canonicalSelfKeys.has(canonicalRosterKey(player.name))
     ) continue;
     remember(player);
   }
@@ -448,15 +454,15 @@ function renderRoster() {
   if (!playerRosterEl) return;
   playerRosterEl.innerHTML = "";
   const self = currentPlayerRecord();
-  const selfKeys = new Set([self.id, self.name, multiplayer.player.handle].map(identityKey).filter(Boolean));
+  const selfKeys = new Set([self.id, self.name, multiplayer.player.handle].map(canonicalRosterKey).filter(Boolean));
   const roster = [
     self,
     ...knownPlayers.filter(player => (
       player.id !== self.id
       && player.id !== "RP"
       && player.name !== "RP"
-      && !selfKeys.has(identityKey(player.id))
-      && !selfKeys.has(identityKey(player.name))
+      && !selfKeys.has(canonicalRosterKey(player.id))
+      && !selfKeys.has(canonicalRosterKey(player.name))
       && !player.self
     )),
   ];
