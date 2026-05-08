@@ -80,6 +80,23 @@ class RelayState:
             player.get("id"),
             player.get("name"),
             player.get("handle"),
+            player.get("device_id"),
+            player.get("deviceId"),
+            *(player.get("aliases") or []),
+        )
+
+    def _delivery_keys_for(self, *values: object) -> set[str]:
+        keys = normalized_keys(*values)
+        keys.update(canonical_roster_key(value) for value in values if canonical_roster_key(value))
+        return {key for key in keys if key}
+
+    def _player_delivery_keys(self, player: dict) -> set[str]:
+        return self._delivery_keys_for(
+            player.get("id"),
+            player.get("name"),
+            player.get("handle"),
+            player.get("device_id"),
+            player.get("deviceId"),
             *(player.get("aliases") or []),
         )
 
@@ -262,7 +279,7 @@ class RelayState:
         return sorted(players, key=lambda item: (not item["active"], item["name"].lower()))
 
     def incoming_for(self, player: dict) -> list[dict]:
-        ids = self._ids_for(player)
+        ids = self._player_delivery_keys(player)
         now = time.time()
         incoming = []
         for challenge in self.challenges.values():
@@ -271,14 +288,14 @@ class RelayState:
             if now - float(challenge.get("created_at_ts", 0)) > 300:
                 challenge["status"] = "expired"
                 continue
-            targets = {
-                str(challenge.get("target") or ""),
-                str(challenge.get("targetName") or ""),
-                str(challenge.get("targetHandle") or ""),
-                str(challenge.get("targetDevice") or ""),
-            }
-            targets.update(item.lower() for item in list(targets))
-            if ids & {item for item in targets if item}:
+            targets = self._delivery_keys_for(
+                challenge.get("target"),
+                challenge.get("targetName"),
+                challenge.get("targetHandle"),
+                challenge.get("targetDevice"),
+                *(challenge.get("targetKeys") or []),
+            )
+            if ids & targets:
                 incoming.append(self.public_challenge(challenge))
         return incoming
 
@@ -356,6 +373,7 @@ class RelayState:
                 target_name = target_record["name"]
                 target_handle = target_record.get("handle") or target_name
                 target_device = target_record.get("device_id") or target_device
+            target_keys = sorted(self._delivery_keys_for(target, target_name, target_handle, target_device))
             challenge_id = f"challenge-{uuid.uuid4().hex[:12]}"
             challenge = {
                 "id": challenge_id,
@@ -365,6 +383,7 @@ class RelayState:
                 "targetName": target_name,
                 "targetHandle": target_handle,
                 "targetDevice": target_device,
+                "targetKeys": target_keys,
                 "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "created_at_ts": time.time(),
                 "status": "pending",
