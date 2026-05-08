@@ -1,18 +1,18 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v12";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v14";
 
 const BUILD_ID = "authoritative-relay";
-const ASSET_BUILD_ID = "authoritative-relay-roster-v12";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v14";
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = `tiberius-phone-v71-${BUILD_ID}`;
+const CURRENT_CACHE = "tiberius-phone-v80-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
 
 function detectDefaultPlayerName() {
   const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
   const ua = String(typeof navigator !== "undefined" ? navigator.userAgent || "" : "").toLowerCase();
-  if (/(iphone|ipad|ipod|android|mobile)/i.test(platform) || /(iphone|ipad|ipod|android|mobile)/i.test(ua)) return "RayPalmer";
+  if (/(iphone|ipad|ipod|android|mobile)/i.test(platform) || /(iphone|ipad|ipod|android|mobile)/i.test(ua)) return "";
   if (/mac/i.test(platform) || /mac os/i.test(ua)) return "Dr. Oz";
   return "Mork";
 }
@@ -437,7 +437,7 @@ function playerSelectionKey(player) {
 function normalizePlayer(player, { includeSelf = false } = {}) {
   let id = String(player.id || player.name || "").trim();
   if (!id || (!includeSelf && id === multiplayer.player.id)) return null;
-  let name = sanitizeDisplayName(player.name || id, DEFAULT_PLAYER_NAME);
+  let name = sanitizeDisplayName(player.name || player.handle || "", DEFAULT_PLAYER_NAME);
   let handle = sanitizeDisplayName(player.handle || name, name);
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
   const personKey = canonicalRosterKey(handle || name || id);

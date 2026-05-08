@@ -47,7 +47,7 @@ def canonical_roster_key(value: object) -> str:
 def default_name_for_platform(platform: object) -> str:
     text = str(platform or "").strip().lower()
     if any(token in text for token in ("iphone", "ipad", "ipod", "android", "mobile")):
-        return "RayPalmer"
+        return ""
     if "mac" in text or "darwin" in text:
         return "Dr. Oz"
     if "win" in text:
@@ -179,7 +179,7 @@ class RelayState:
         self.prune_stale_players()
         device_id = self._device_id_for(player)
         platform = str(player.get("platform") or player.get("platform_hint") or "").strip()
-        player_id = str(player.get("id") or player.get("name") or "").strip()
+        player_id = str(player.get("device_id") or player.get("deviceId") or player.get("id") or player.get("name") or "").strip()
         if not player_id:
             player_id = f"anon-{device_id}" if device_id else ""
         existing = next((record for record in {id(value): value for value in self.players.values()}.values() if self._device_id_for(record) == device_id), None)
@@ -193,7 +193,7 @@ class RelayState:
                 ),
                 None,
             )
-        desired_name = player.get("name") or player.get("handle") or player_id or default_name_for_platform(platform)
+        desired_name = player.get("name") or player.get("handle") or (existing.get("name") if existing else "") or default_name_for_platform(platform)
         name = self._unique_display_name(desired_name, device_id, existing, platform)
         handle = sanitize_display_name(player.get("handle") or name or player_id, name)
         incoming_key = self._roster_key_for_record({

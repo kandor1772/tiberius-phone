@@ -10,7 +10,7 @@ const RELAY_TIMEOUT_MS = 8_000;
 function detectDefaultPlayerName() {
   const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
   const ua = String(typeof navigator !== "undefined" ? navigator.userAgent || "" : "").toLowerCase();
-  if (/(iphone|ipad|ipod|android|mobile)/i.test(platform) || /(iphone|ipad|ipod|android|mobile)/i.test(ua)) return "RayPalmer";
+  if (/(iphone|ipad|ipod|android|mobile)/i.test(platform) || /(iphone|ipad|ipod|android|mobile)/i.test(ua)) return "";
   if (/mac/i.test(platform) || /mac os/i.test(ua)) return "Dr. Oz";
   return "Mork";
 }
@@ -83,15 +83,15 @@ function betterRosterRecord(current, next) {
 }
 
 function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
-  const rawName = sanitizeDisplayName(player?.name || player?.handle || player?.id, DEFAULT_PLAYER_NAME);
-  const savedId = String(player?.id || "").trim();
+  const rawName = sanitizeDisplayName(player?.name || player?.handle, DEFAULT_PLAYER_NAME);
+  const fallbackName = sanitizeDisplayName("", DEFAULT_PLAYER_NAME);
   let name = rawName && !isAnonIdentity(rawName)
     ? rawName
-    : sanitizeDisplayName(isAnonIdentity(savedId) ? DEFAULT_PLAYER_NAME : savedId, DEFAULT_PLAYER_NAME);
+    : fallbackName;
   const handle = canonicalHandle(name);
-  const baseId = isAnonIdentity(player?.id) ? "" : player?.id;
   const deviceId = player?.device_id || player?.deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-  const id = handle || baseId || deviceId || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  const baseId = isAnonIdentity(player?.id) ? "" : player?.id;
+  const id = deviceId || baseId || `anon-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const aliases = new Set(preserveAliases && Array.isArray(player?.aliases) ? player.aliases : []);
   if (preserveAliases && player?.id && !isAnonIdentity(player.id) && player.id !== id) aliases.add(player.id);
   const ownKeys = new Set([id, name, handle].map(canonicalRosterKey).filter(Boolean));
@@ -301,8 +301,9 @@ export class MultiplayerClient {
 
   rememberRosterPlayer(player) {
     if (isAnonIdentity(player?.id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) return;
-    let id = canonicalHandle(player?.id || player?.name || player?.handle);
-    let name = sanitizeDisplayName(player?.name || player?.handle || id || "", DEFAULT_PLAYER_NAME);
+    let name = sanitizeDisplayName(player?.name || player?.handle || "", DEFAULT_PLAYER_NAME);
+    if (!name) return;
+    let id = canonicalHandle(player?.id || player?.device_id || player?.deviceId || player?.handle || name);
     const personKey = canonicalRosterKey(player?.handle || name || id);
     if (personKey === "liamz") {
       id = "liamz";
