@@ -2,7 +2,7 @@
   "name": "Tiberius",
   "short_name": "Tiberius",
   "description": "On-device Tiberius chess overlay with Stockfish worker support.",
-  "start_url": "./?v=authoritative-relay-roster-v27",
+  "start_url": "./?v=authoritative-relay-roster-v28",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

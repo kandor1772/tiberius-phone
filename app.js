@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v27";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v28";
 
-const ASSET_BUILD_ID = "authoritative-relay-roster-v27";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v28";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v93-pc-board-fit";
+const CURRENT_CACHE = "tiberius-phone-v94-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 
@@ -52,7 +52,9 @@ function isAnonIdentity(value) {
 }
 
 function firstNamedIdentity(...values) {
-  return values.map(value => String(value || "").trim()).find(value => value && !isAnonIdentity(value)) || "";
+  return values
+    .map(value => String(value || "").trim())
+    .find(value => value && !isAnonIdentity(value) && value.toLowerCase() !== "you") || "";
 }
 
 function identityKey(value) {
@@ -461,6 +463,19 @@ function playerLabel(id) {
   return player?.name || id;
 }
 
+function selfMatchScore(player, selfKeys) {
+  const name = firstNamedIdentity(player?.name, player?.handle);
+  const personKey = canonicalRosterKey(name || player?.id);
+  let score = 0;
+  if (name) score += 100;
+  if (PERSON_ROSTER_KEYS.has(personKey)) score += 50;
+  if (String(player?.device_id || player?.deviceId || "").trim() && selfKeys.has(String(player.device_id || player.deviceId).trim())) score += 20;
+  if (selfKeys.has(String(player?.id || "").trim())) score += 10;
+  if (player?.active || player?.available) score += 5;
+  if (player?.self) score -= 25;
+  return score;
+}
+
 function currentPlayerRecord() {
   const selfKeys = new Set([
     String(multiplayer.player.device_id || "").trim(),
@@ -468,16 +483,18 @@ function currentPlayerRecord() {
     firstNamedIdentity(multiplayer.player.handle),
     firstNamedIdentity(multiplayer.player.name),
   ].filter(Boolean));
-  const matched = knownPlayers.find(player => (
-    selfKeys.has(String(player.device_id || player.deviceId || "").trim())
-    || selfKeys.has(String(playerSelectionKey(player)).trim())
-    || selfKeys.has(String(player.id || "").trim())
-    || selfKeys.has(firstNamedIdentity(player.name))
-    || selfKeys.has(firstNamedIdentity(player.handle))
-  ));
+  const matched = knownPlayers
+    .filter(player => (
+      selfKeys.has(String(player.device_id || player.deviceId || "").trim())
+      || selfKeys.has(String(playerSelectionKey(player)).trim())
+      || selfKeys.has(String(player.id || "").trim())
+      || selfKeys.has(firstNamedIdentity(player.name))
+      || selfKeys.has(firstNamedIdentity(player.handle))
+    ))
+    .sort((a, b) => selfMatchScore(b, selfKeys) - selfMatchScore(a, selfKeys))[0];
   const selfName = canonicalDisplayName(
-    firstNamedIdentity(matched?.name, matched?.handle, multiplayer.player.name, multiplayer.player.handle),
-    firstNamedIdentity(matched?.name, matched?.handle, multiplayer.player.name, multiplayer.player.handle, "you")
+    firstNamedIdentity(multiplayer.player.name, multiplayer.player.handle, matched?.name, matched?.handle),
+    firstNamedIdentity(multiplayer.player.name, multiplayer.player.handle, matched?.name, matched?.handle, "you")
   );
   return {
     id: matched?.id || multiplayer.player.id,

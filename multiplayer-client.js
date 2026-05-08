@@ -64,7 +64,9 @@ function isAnonIdentity(value) {
 }
 
 function firstNamedIdentity(...values) {
-  return values.map(value => String(value || "").trim()).find(value => value && !isAnonIdentity(value)) || "";
+  return values
+    .map(value => String(value || "").trim())
+    .find(value => value && !isAnonIdentity(value) && value.toLowerCase() !== "you") || "";
 }
 
 function identityKey(value) {
