@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=c0d008d";
+import { MultiplayerClient } from "./multiplayer-client.js?v=c0d008d2";
 
 const BUILD_ID = "c0d008d";
-const ASSET_BUILD_ID = "c0d008d";
+const ASSET_BUILD_ID = "c0d008d2";
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = `tiberius-phone-v86-${BUILD_ID}`;
+const CURRENT_CACHE = `tiberius-phone-v87-${ASSET_BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
 
 function detectDefaultPlayerName() {
@@ -34,6 +34,21 @@ function purgeLegacyAppStorage() {
       if (key && key.startsWith("tiberius-phone-")) keys.push(key);
     }
     for (const key of keys) localStorage.removeItem(key);
+  } catch (_err) {}
+}
+
+async function clearStaleBrowserControl() {
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(registration => registration.unregister().catch(() => {})));
+    }
+  } catch (_err) {}
+  try {
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter(key => key.startsWith("tiberius-phone-")).map(key => caches.delete(key).catch(() => {})));
+    }
   } catch (_err) {}
 }
 
@@ -1662,16 +1677,6 @@ document.addEventListener("visibilitychange", () => {
 canonicalizeBuildUrl();
 cleanOldAppCaches();
 
-if ("serviceWorker" in navigator) {
-  let refreshingForUpdate = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (refreshingForUpdate) return;
-    refreshingForUpdate = true;
-    window.location.reload();
-  });
-  navigator.serviceWorker.register(`sw.js?v=${ASSET_BUILD_ID}`).then(registration => {
-    registration.update().catch(() => {});
-  }).catch(() => {});
-}
+clearStaleBrowserControl().catch(() => {});
 
 boot();
