@@ -198,6 +198,7 @@ export class MultiplayerClient {
     this.endpoints = endpoints;
     clearLegacyRosterStorage();
     this.player = stableId();
+    this.pendingRename = false;
     this.connected = false;
     this.lastError = "";
     this.transport = "";
@@ -213,6 +214,7 @@ export class MultiplayerClient {
     const clean = sanitizeDisplayName(name, DEFAULT_PLAYER_NAME);
     if (!clean) return;
     this.player = normalizePlayerIdentity({ ...this.player, name: clean }, { preserveAliases: false });
+    this.pendingRename = true;
     try {
       localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
     } catch (_err) {}
@@ -255,7 +257,7 @@ export class MultiplayerClient {
     const body = {
       player: { ...this.player, progress: payload?.progress || null },
       client: "tiberius-phone-github-pages",
-      payload,
+      payload: { ...payload, rename: Boolean(payload?.rename || this.pendingRename) },
     };
     for (const endpoint of this.endpoints) {
       const controller = new AbortController();
@@ -282,6 +284,7 @@ export class MultiplayerClient {
             localStorage.setItem(PLAYER_KEY, JSON.stringify(this.player));
           } catch (_err) {}
         }
+        if (path === "/heartbeat") this.pendingRename = false;
         return data;
       } catch (error) {
         clearTimeout(timer);

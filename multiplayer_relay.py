@@ -98,14 +98,14 @@ class RelayState:
             return f"device:{device_id}"
         return person_key
 
-    def _unique_display_name(self, desired: object, device_id: str, existing: dict | None = None, platform: object = "") -> str:
+    def _unique_display_name(self, desired: object, device_id: str, existing: dict | None = None, platform: object = "", *, rename: bool = False) -> str:
         base = sanitize_display_name(desired, default_name_for_platform(platform))
         occupied = {
             canonical_roster_key(record.get("name") or record.get("handle") or record.get("id"))
             for record in {id(value): value for value in self.players.values()}.values()
             if record is not existing
         }
-        if existing:
+        if existing and not rename:
             current_name = sanitize_display_name(existing.get("name") or existing.get("handle") or existing.get("id"), base)
             if canonical_roster_key(current_name) not in occupied:
                 return current_name
@@ -174,7 +174,7 @@ class RelayState:
                 events.append(event)
         return events
 
-    def touch_player(self, player: dict) -> dict:
+    def touch_player(self, player: dict, *, rename: bool = False) -> dict:
         now = time.time()
         self.prune_stale_players()
         device_id = self._device_id_for(player)
@@ -193,8 +193,13 @@ class RelayState:
                 ),
                 None,
             )
-        desired_name = player.get("handle") or player.get("name") or (existing.get("name") if existing else "") or default_name_for_platform(platform)
-        name = self._unique_display_name(desired_name, device_id, existing, platform)
+        desired_name = (
+            player.get("handle")
+            or (player.get("name") if rename or not existing else "")
+            or (existing.get("name") if existing else "")
+            or default_name_for_platform(platform)
+        )
+        name = self._unique_display_name(desired_name, device_id, existing, platform, rename=rename)
         handle = sanitize_display_name(player.get("handle") or name or player_id, name)
         incoming_key = self._roster_key_for_record({
             "id": player_id,
@@ -288,9 +293,9 @@ class RelayState:
             "created_at": challenge["created_at"],
         }
 
-    def heartbeat(self, player: dict) -> dict:
+    def heartbeat(self, player: dict, payload: dict | None = None) -> dict:
         with self.lock:
-            record = self.touch_player(player)
+            record = self.touch_player(player, rename=bool((payload or {}).get("rename")))
             progress = player.get("progress") or {}
             if isinstance(progress, dict):
                 for key in (
@@ -320,7 +325,7 @@ class RelayState:
 
     def challenge(self, player: dict, payload: dict) -> dict:
         with self.lock:
-            sender = self.touch_player(player)
+            sender = self.touch_player(player, rename=bool(payload.get("rename")))
             target = str(payload.get("target") or "").strip()
             target_name = str(payload.get("targetName") or target).strip()
             target_handle = str(payload.get("targetHandle") or target_name or target).strip()
@@ -374,7 +379,7 @@ class RelayState:
 
     def respond(self, player: dict, payload: dict) -> dict:
         with self.lock:
-            responder = self.touch_player(player)
+            responder = self.touch_player(player, rename=bool(payload.get("rename")))
             challenge_id = str(payload.get("challengeId") or "").strip()
             accept = bool(payload.get("accept"))
             challenge = self.challenges.get(challenge_id)
@@ -416,7 +421,7 @@ class RelayState:
 
     def move(self, player: dict, payload: dict) -> dict:
         with self.lock:
-            sender = self.touch_player(player)
+            sender = self.touch_player(player, rename=bool(payload.get("rename")))
             game_id = str(payload.get("gameId") or "").strip()
             game = self.games.get(game_id)
             if not game:
@@ -436,7 +441,7 @@ class RelayState:
 
     def forfeit(self, player: dict, payload: dict) -> dict:
         with self.lock:
-            sender = self.touch_player(player)
+            sender = self.touch_player(player, rename=bool(payload.get("rename")))
             game_id = str(payload.get("gameId") or "").strip()
             game = self.games.pop(game_id, None)
             if game:
@@ -484,7 +489,7 @@ class RelayHandler(BaseHTTPRequestHandler):
             payload = body.get("payload") or {}
             path = urlparse(self.path).path
             if path.endswith("/heartbeat"):
-                data = self.server.state.heartbeat(player)
+                data = self.server.state.heartbeat(player, payload)
             elif path.endswith("/challenge/respond"):
                 data = self.server.state.respond(player, payload)
             elif path.endswith("/challenge"):
