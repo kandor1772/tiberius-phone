@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v19";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v20";
 
-const ASSET_BUILD_ID = "authoritative-relay-roster-v19";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v20";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v85-pc-board-fit";
+const CURRENT_CACHE = "tiberius-phone-v86-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
 
 function detectDefaultPlayerName() {
@@ -243,7 +243,7 @@ function setThinking(thinking) {
   playBtn.disabled = thinking || !isHumanTurn();
   moveInput.disabled = playBtn.disabled;
   concedeBtn.disabled = !gameActive || thinking || Boolean(gameResult);
-  playHumanBtn.disabled = thinking || inviteSending || !multiplayer.label();
+  playHumanBtn.disabled = thinking || inviteSending || !gameActive || Boolean(gameResult);
   returnGameBtn.disabled = !latestReturnableGame();
   acceptChallengeBtn.disabled = !incomingChallenge || !gameActive || Boolean(gameResult);
   declineChallengeBtn.disabled = !incomingChallenge;
@@ -396,7 +396,9 @@ function onlineSummary() {
     : gameActive && !gameResult ? "available for human invites" : "unavailable until a board is active";
   const handle = multiplayer.player.handle ? ` Handle: ${multiplayer.player.handle}.` : "";
   const opponent = onlineGame ? ` Online game vs ${onlineGame.opponent || "player"}.` : "";
-  const selectedPlayer = selectedPlayerId ? knownPlayers.find(player => player.id === selectedPlayerId) : null;
+  const selectedPlayer = selectedPlayerId
+    ? knownPlayers.find(player => playerSelectionKey(player) === selectedPlayerId || player.id === selectedPlayerId || player.name === selectedPlayerId || player.device_id === selectedPlayerId)
+    : null;
   const selected = selectedPlayer
     ? ` Selected ${selectedPlayer.name}${selectedPlayer.active ? " (active)" : ""}.`
     : " No player selected: Play Human will look for a random player.";

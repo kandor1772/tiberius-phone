@@ -1,11 +1,11 @@
-const CACHE = "tiberius-phone-v85-pc-board-fit";
-const APP_ENTRY = "./?v=authoritative-relay-roster-v19";
+const CACHE = "tiberius-phone-v86-pc-board-fit";
+const APP_ENTRY = "./?v=authoritative-relay-roster-v20";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=authoritative-relay-roster-v19",
+  "index.html?v=authoritative-relay-roster-v20",
   "style.css",
-  "app.js?v=authoritative-relay-roster-v19",
-  "multiplayer-client.js?v=authoritative-relay-roster-v19",
+  "app.js?v=authoritative-relay-roster-v20",
+  "multiplayer-client.js?v=authoritative-relay-roster-v20",
   "tiberius-overlay.js",
   "stockfish-adapter.js",
   "memory-sources.json",
@@ -16,7 +16,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=authoritative-relay-roster-v19",
+  "manifest.webmanifest?v=authoritative-relay-roster-v20",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"

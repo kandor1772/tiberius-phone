@@ -516,8 +516,8 @@ export class MultiplayerClient {
     return null;
   }
 
-  async challenge({ target = "", targetName = "", random = false, inviterColor = "w", game }) {
-    const payload = { target, targetName, targetHandle: targetName || target, random, inviterColor, game };
+  async challenge({ target = "", targetDevice = "", targetName = "", targetHandle = "", random = false, inviterColor = "w", game }) {
+    const payload = { target, targetDevice, targetName, targetHandle: targetHandle || targetName || target, random, inviterColor, game };
     const data = await this.request("/challenge", payload, RELAY_TIMEOUT_MS);
     if (data?.ok) {
       this.connected = true;
