@@ -1,10 +1,11 @@
-const CACHE = "tiberius-phone-v84-pc-board-fit";
+const CACHE = "tiberius-phone-v85-pc-board-fit";
+const APP_ENTRY = "./?v=authoritative-relay-roster-v19";
 const ASSETS = [
-  "./",
-  "index.html",
+  APP_ENTRY,
+  "index.html?v=authoritative-relay-roster-v19",
   "style.css",
-  "app.js",
-  "multiplayer-client.js",
+  "app.js?v=authoritative-relay-roster-v19",
+  "multiplayer-client.js?v=authoritative-relay-roster-v19",
   "tiberius-overlay.js",
   "stockfish-adapter.js",
   "memory-sources.json",
@@ -15,7 +16,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest",
+  "manifest.webmanifest?v=authoritative-relay-roster-v19",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"
@@ -42,10 +43,14 @@ self.addEventListener("fetch", event => {
     return;
   }
   event.respondWith(
-    fetch(event.request).then(response => {
+    fetch(event.request, { cache: "reload" }).then(response => {
       const copy = response.clone();
       caches.open(CACHE).then(cache => cache.put(event.request, copy)).catch(() => {});
       return response;
-    }).catch(() => caches.match(event.request))
+    }).catch(() => caches.match(event.request).then(match => {
+      if (match) return match;
+      if (event.request.mode === "navigate") return caches.match(APP_ENTRY);
+      return undefined;
+    }))
   );
 });
