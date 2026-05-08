@@ -256,11 +256,13 @@ export class TiberiusRelay {
     return record;
   }
 
-  roster() {
+  roster(surface = "") {
     this.prune();
     const byKey = new Map();
+    const wantedSurface = String(surface || "").trim().toLowerCase();
     for (const record of this.data.players) {
       if (isTestProfile(record.id) || isTestProfile(record.name)) continue;
+      if (wantedSurface && String(record.surface || "browser").trim().toLowerCase() !== wantedSurface) continue;
       const active = Date.now() - Number(record.last_seen || 0) <= STALE_AFTER_MS;
       const publicRecord = { ...publicPlayer(record), active, available: active };
       const key = this.rosterKeyFor(publicRecord);
@@ -361,7 +363,7 @@ export class TiberiusRelay {
     this.mergeProgress(player.progress || payload.progress || {});
     return jsonResponse({
       ok: true,
-      players: this.roster(),
+      players: this.roster(record.surface),
       incoming: this.incomingFor(record),
       events: this.popEventsFor(record),
       progress: this.data.shared_progress,
@@ -378,7 +380,7 @@ export class TiberiusRelay {
     let targetDevice = String(payload.targetDevice || "").trim();
     const targetSurface = String(payload.targetSurface || sender.surface || "browser").trim().toLowerCase() || "browser";
     if (!target && payload.random) {
-      const candidate = this.roster().find(item => (
+      const candidate = this.roster(targetSurface).find(item => (
         item.active
         && item.surface === targetSurface
         && item.id !== sender.id
@@ -392,7 +394,7 @@ export class TiberiusRelay {
       }
     }
     if (!target && !targetHandle && !targetDevice) {
-      return jsonResponse({ ok: false, players: this.roster(), message: "No active player available." });
+      return jsonResponse({ ok: false, players: this.roster(sender.surface), message: "No active player available." });
     }
     const targetKeys = this.deliveryKeysFor(target, targetName, targetHandle, targetDevice);
     const targetRecord = this.data.players.find(candidate => (
@@ -423,7 +425,7 @@ export class TiberiusRelay {
     };
     return jsonResponse({
       ok: true,
-      players: this.roster(),
+      players: this.roster(sender.surface),
       self: publicPlayer(sender),
       message: `Invite sent to ${targetName || targetHandle || target}.`,
     });
@@ -435,11 +437,11 @@ export class TiberiusRelay {
     const accept = Boolean(payload.accept);
     const challenge = this.data.challenges[challengeId];
     if (!challenge || challenge.status !== "pending") {
-      return jsonResponse({ ok: false, players: this.roster(), message: "Invite is no longer available." });
+      return jsonResponse({ ok: false, players: this.roster(responder.surface), message: "Invite is no longer available." });
     }
     challenge.status = accept ? "accepted" : "declined";
     if (!accept) {
-      return jsonResponse({ ok: true, players: this.roster(), self: publicPlayer(responder), message: "Invite declined." });
+      return jsonResponse({ ok: true, players: this.roster(responder.surface), self: publicPlayer(responder), message: "Invite declined." });
     }
     const gameId = `game-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
     const game = {
@@ -466,7 +468,7 @@ export class TiberiusRelay {
     });
     return jsonResponse({
       ok: true,
-      players: this.roster(),
+      players: this.roster(responder.surface),
       self: publicPlayer(responder),
       game: { ...game, color: "b" },
       message: "Invite accepted.",
@@ -477,7 +479,7 @@ export class TiberiusRelay {
     const sender = this.touchPlayer(player, rename);
     const gameId = String(payload.gameId || "").trim();
     const game = this.data.games[gameId];
-    if (!game) return jsonResponse({ ok: false, players: this.roster(), message: "Game not found." });
+    if (!game) return jsonResponse({ ok: false, players: this.roster(sender.surface), message: "Game not found." });
     for (const target of [game.white, game.black]) {
       if (target === sender.id) continue;
       this.queueEvent(target, {
@@ -488,7 +490,7 @@ export class TiberiusRelay {
         pgn: payload.pgn,
       });
     }
-    return jsonResponse({ ok: true, players: this.roster(), self: publicPlayer(sender), message: "Move relayed." });
+    return jsonResponse({ ok: true, players: this.roster(sender.surface), self: publicPlayer(sender), message: "Move relayed." });
   }
 
   forfeit(player, payload, rename) {
@@ -507,7 +509,7 @@ export class TiberiusRelay {
         });
       }
     }
-    return jsonResponse({ ok: true, players: this.roster(), self: publicPlayer(sender), message: "Forfeit relayed." });
+    return jsonResponse({ ok: true, players: this.roster(sender.surface), self: publicPlayer(sender), message: "Forfeit relayed." });
   }
 
   async fetch(request) {

@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=surface-routed-relay-v30";
+import { MultiplayerClient } from "./multiplayer-client.js?v=surface-pure-roster-v31";
 
-const ASSET_BUILD_ID = "surface-routed-relay-v30";
+const ASSET_BUILD_ID = "surface-pure-roster-v31";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v96-surface-routed-relay";
+const CURRENT_CACHE = "tiberius-phone-v97-surface-pure-roster";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 
@@ -505,11 +505,14 @@ function currentPlayerRecord() {
   ].filter(Boolean));
   const matched = knownPlayers
     .filter(player => (
-      selfKeys.has(String(player.device_id || player.deviceId || "").trim())
-      || selfKeys.has(String(playerSelectionKey(player)).trim())
-      || selfKeys.has(String(player.id || "").trim())
-      || selfKeys.has(firstNamedIdentity(player.name))
-      || selfKeys.has(firstNamedIdentity(player.handle))
+      (sameSurface(player) || selfKeys.has(String(player.device_id || player.deviceId || "").trim()))
+      && (
+        selfKeys.has(String(player.device_id || player.deviceId || "").trim())
+        || selfKeys.has(String(playerSelectionKey(player)).trim())
+        || selfKeys.has(String(player.id || "").trim())
+        || selfKeys.has(firstNamedIdentity(player.name))
+        || selfKeys.has(firstNamedIdentity(player.handle))
+      )
     ))
     .sort((a, b) => selfMatchScore(b, selfKeys) - selfMatchScore(a, selfKeys))[0];
   const selfName = canonicalDisplayName(
@@ -539,6 +542,7 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
   let handle = sanitizeDisplayName(firstNamedIdentity(player.handle, name), name);
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
   const surface = String(player.surface || "browser").trim().toLowerCase() || "browser";
+  if (surface !== multiplayer.surface) return null;
   const personKey = canonicalRosterKey(handle || name || id);
   if (PERSON_ROSTER_KEYS.has(personKey)) {
     name = canonicalDisplayName(personKey, name);
@@ -548,9 +552,9 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
     }
   }
   const lastSeen = normalizeTimestamp(player.last_seen || player.updated_at);
-  const active = sameSurface({ surface }) && rosterRecordActive({ ...player, last_seen: lastSeen });
+  const active = rosterRecordActive({ ...player, last_seen: lastSeen });
   const seeded = Boolean(player.seeded);
-  if (!active && !seeded && personKey !== "liamz") return null;
+  if (!active && !seeded) return null;
   return {
     id,
     name,
@@ -582,6 +586,7 @@ function mergePlayers(players = []) {
   const visibleKnownPlayers = knownPlayers.filter(player => (
     player.id !== "RP"
     && player.name !== "RP"
+    && sameSurface(player)
     && String(player.device_id || player.deviceId || "").trim() !== selfDeviceId
     && playerSelectionKey(player) !== playerSelectionKey(self)
     && !canonicalSelfKeys.has(canonicalRosterKey(player.id))
@@ -626,6 +631,7 @@ function renderRoster() {
       player.id !== self.id
       && player.id !== "RP"
       && player.name !== "RP"
+      && sameSurface(player)
       && String(player.device_id || player.deviceId || "").trim() !== selfDeviceId
       && playerSelectionKey(player) !== selfSelection
       && !selfKeys.has(canonicalRosterKey(player.id))

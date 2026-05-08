@@ -2,7 +2,7 @@ const PLAYER_KEY = "tiberius-phone-player-v1";
 const NTFY_SEEN_KEY = "tiberius-phone-ntfy-seen-v2";
 const NTFY_BASE = "https://ntfy.sh";
 const NTFY_PREFIX = "tiberius-phone-chess-v3";
-const ROSTER_KEY = "tiberius-phone-public-roster-v6";
+const ROSTER_KEY = "tiberius-phone-public-roster-v7";
 const ROSTER_STALE_MS = 90_000;
 const PRESENCE_INTERVAL_MS = 15_000;
 const RELAY_TIMEOUT_MS = 3_000;
@@ -41,12 +41,12 @@ const PERSON_DISPLAY_NAMES = {
   spock: "Spock",
 };
 const FALLBACK_PLAYERS = [
-  { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true, last_seen: 1 },
-  { id: "liamz", name: "Liamz", active: false, available: false, seeded: true, last_seen: 1 },
-  { id: "queenorma", name: "QueeNorma", active: false, available: false, seeded: true, last_seen: 1 },
-  { id: "rick", name: "rick", active: false, available: false, seeded: true, last_seen: 1 },
-  { id: "droz", name: "Dr. Oz", active: false, available: false, seeded: true, last_seen: 1 },
-  { id: "spock", name: "Spock", active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "raypalmer", name: "RayPalmer", surface: LAUNCH_SURFACE, active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "liamz", name: "Liamz", surface: LAUNCH_SURFACE, active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "queenorma", name: "QueeNorma", surface: LAUNCH_SURFACE, active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "rick", name: "rick", surface: LAUNCH_SURFACE, active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "droz", name: "Dr. Oz", surface: LAUNCH_SURFACE, active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "spock", name: "Spock", surface: LAUNCH_SURFACE, active: false, available: false, seeded: true, last_seen: 1 },
 ];
 
 function detectPlatform() {
@@ -256,6 +256,7 @@ function clearLegacyRosterStorage() {
     localStorage.removeItem("tiberius-phone-public-roster-v3");
     localStorage.removeItem("tiberius-phone-public-roster-v4");
     localStorage.removeItem("tiberius-phone-public-roster-v5");
+    localStorage.removeItem("tiberius-phone-public-roster-v6");
   } catch (_err) {}
 }
 
@@ -414,6 +415,8 @@ export class MultiplayerClient {
       name = canonicalDisplayName(DEFAULT_PLAYER_NAME, DEFAULT_PLAYER_NAME);
     }
     if (!id || !name || isAnonIdentity(id) || isAnonIdentity(name)) return;
+    const surface = String(player?.surface || "browser").trim().toLowerCase() || "browser";
+    if (surface !== this.surface) return;
     const lastSeen = normalizeTimestamp(player.last_seen || player.updated_at);
     const active = rosterRecordActive({ ...player, last_seen: lastSeen });
     const record = {
@@ -421,7 +424,7 @@ export class MultiplayerClient {
       name,
       handle: PERSON_ROSTER_KEYS.has(personKey) ? personKey : canonicalHandle(player?.handle || name) || id,
       device_id: String(player?.device_id || player?.deviceId || "").trim(),
-      surface: String(player?.surface || "browser").trim().toLowerCase() || "browser",
+      surface,
       active,
       available: active,
       last_seen: lastSeen,
@@ -440,6 +443,7 @@ export class MultiplayerClient {
     const byPerson = new Map();
     for (const [id, player] of this.rosterById.entries()) {
       if (isAnonIdentity(id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) continue;
+      if (String(player?.surface || "browser").trim().toLowerCase() !== this.surface) continue;
       const normalizedLastSeen = normalizeTimestamp(player.last_seen || player.updated_at);
       const seeded = Boolean(player.seeded);
       const self = id === this.player.id || id === this.player.handle;

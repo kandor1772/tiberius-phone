@@ -1,11 +1,11 @@
-const CACHE = "tiberius-phone-v96-surface-routed-relay";
-const APP_ENTRY = "./?v=surface-routed-relay-v30";
+const CACHE = "tiberius-phone-v97-surface-pure-roster";
+const APP_ENTRY = "./?v=surface-pure-roster-v31";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=surface-routed-relay-v30",
+  "index.html?v=surface-pure-roster-v31",
   "style.css",
-  "app.js?v=surface-routed-relay-v30",
-  "multiplayer-client.js?v=surface-routed-relay-v30",
+  "app.js?v=surface-pure-roster-v31",
+  "multiplayer-client.js?v=surface-pure-roster-v31",
   "tiberius-overlay.js",
   "stockfish-adapter.js",
   "memory-sources.json",
@@ -16,7 +16,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=surface-routed-relay-v30",
+  "manifest.webmanifest?v=surface-pure-roster-v31",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"
