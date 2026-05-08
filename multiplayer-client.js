@@ -19,6 +19,15 @@ function detectDefaultPlayerName() {
 const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
 const OFFENSIVE_NAME_PATTERN = /(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)/i;
 const PERSON_ROSTER_KEYS = new Set(["mork", "liamz", "raypalmer", "queenorma", "rick", "droz", "spock"]);
+const PERSON_DISPLAY_NAMES = {
+  mork: "Mork",
+  liamz: "Liamz",
+  raypalmer: "RayPalmer",
+  queenorma: "QueeNorma",
+  rick: "rick",
+  droz: "Dr. Oz",
+  spock: "Spock",
+};
 const FALLBACK_PLAYERS = [
   { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true, last_seen: 1 },
   { id: "liamz", name: "Liamz", active: false, available: false, seeded: true, last_seen: 1 },
@@ -62,6 +71,26 @@ function canonicalRosterKey(value) {
   return key;
 }
 
+function canonicalDisplayName(value, fallback = "") {
+  return PERSON_DISPLAY_NAMES[canonicalRosterKey(value)] || fallback;
+}
+
+function normalizeTimestamp(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") return fallback;
+  if (typeof value === "string" && /[a-z:-]/i.test(value)) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return fallback;
+  return number < 10_000_000_000 ? number * 1000 : number;
+}
+
+function rosterRecordActive(player) {
+  const lastSeen = normalizeTimestamp(player?.last_seen || player?.updated_at);
+  return lastSeen > 0 && Date.now() - lastSeen <= ROSTER_STALE_MS;
+}
+
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
   if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}`;
@@ -73,12 +102,15 @@ function rosterIdentityKey(player) {
 function betterRosterRecord(current, next) {
   if (!current) return next;
   if (!next) return current;
-  const currentActive = Boolean(current.active || current.available);
-  const nextActive = Boolean(next.active || next.available);
+  const currentActive = rosterRecordActive(current);
+  const nextActive = rosterRecordActive(next);
   if (nextActive !== currentActive) return nextActive ? next : current;
-  const currentSeen = Number(current.last_seen || 0);
-  const nextSeen = Number(next.last_seen || 0);
+  const currentSeen = normalizeTimestamp(current.last_seen || current.updated_at);
+  const nextSeen = normalizeTimestamp(next.last_seen || next.updated_at);
   if (nextSeen !== currentSeen) return nextSeen > currentSeen ? next : current;
+  const currentCanonical = canonicalDisplayName(current.name || current.handle || current.id, current.name || "");
+  const nextCanonical = canonicalDisplayName(next.name || next.handle || next.id, next.name || "");
+  if (nextCanonical && next.name === nextCanonical && current.name !== currentCanonical) return next;
   if (String(next.name || "").length < String(current.name || "").length) return next;
   return current;
 }
@@ -89,6 +121,7 @@ function normalizePlayerIdentity(player, { preserveAliases = true } = {}) {
   let name = rawName && !isAnonIdentity(rawName)
     ? rawName
     : fallbackName;
+  name = canonicalDisplayName(name, name);
   const handle = canonicalHandle(name);
   const deviceId = player?.device_id || player?.deviceId || `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const baseId = isAnonIdentity(player?.id) ? "" : player?.id;
@@ -127,6 +160,17 @@ function mergeLists(...lists) {
     }
   }
   return out;
+}
+
+function mergeRosterLists(...lists) {
+  const byPlayer = new Map();
+  for (const list of lists) {
+    for (const player of list || []) {
+      const key = rosterIdentityKey(player) || player?.id || player?.name || JSON.stringify(player);
+      byPlayer.set(key, betterRosterRecord(byPlayer.get(key), player));
+    }
+  }
+  return [...byPlayer.values()];
 }
 
 function publicId(prefix) {
@@ -313,21 +357,21 @@ export class MultiplayerClient {
     if (!name) return;
     let id = canonicalHandle(player?.id || player?.device_id || player?.deviceId || player?.handle || name);
     const personKey = canonicalRosterKey(player?.handle || name || id);
-    if (personKey === "liamz") {
-      id = "liamz";
-      name = "Liamz";
+    if (PERSON_ROSTER_KEYS.has(personKey)) {
+      id = personKey;
+      name = canonicalDisplayName(personKey, name);
     }
     if (DEFAULT_PLAYER_NAME && [id, name, player?.handle].some(value => identityKey(value) === identityKey(DEFAULT_PLAYER_NAME))) {
       id = canonicalHandle(DEFAULT_PLAYER_NAME);
-      name = DEFAULT_PLAYER_NAME;
+      name = canonicalDisplayName(DEFAULT_PLAYER_NAME, DEFAULT_PLAYER_NAME);
     }
     if (!id || !name || isAnonIdentity(id) || isAnonIdentity(name)) return;
-    const lastSeen = Number(player.last_seen || Date.now());
-    const active = Date.now() - lastSeen <= ROSTER_STALE_MS;
+    const lastSeen = normalizeTimestamp(player.last_seen || player.updated_at);
+    const active = rosterRecordActive({ ...player, last_seen: lastSeen });
     const record = {
       id,
       name,
-      handle: personKey === "liamz" ? "liamz" : canonicalHandle(player?.handle || name) || id,
+      handle: PERSON_ROSTER_KEYS.has(personKey) ? personKey : canonicalHandle(player?.handle || name) || id,
       device_id: String(player?.device_id || player?.deviceId || "").trim(),
       active,
       available: active,
@@ -347,14 +391,14 @@ export class MultiplayerClient {
     const byPerson = new Map();
     for (const [id, player] of this.rosterById.entries()) {
       if (isAnonIdentity(id) || isAnonIdentity(player?.name) || isAnonIdentity(player?.handle)) continue;
-      const lastSeen = Number(player.last_seen || 0);
+      const normalizedLastSeen = normalizeTimestamp(player.last_seen || player.updated_at);
       const seeded = Boolean(player.seeded);
       const self = id === this.player.id || id === this.player.handle;
-      const active = self || now - lastSeen <= ROSTER_STALE_MS;
-      const record = { ...player, active, available: active };
+      const active = self || rosterRecordActive({ ...player, last_seen: normalizedLastSeen });
+      const record = { ...player, active, available: active, last_seen: normalizedLastSeen || player.last_seen };
       const key = rosterIdentityKey(record);
       byPerson.set(key, betterRosterRecord(byPerson.get(key), record));
-      if (!seeded && now - lastSeen <= 30 * 60_000) saved[id] = record;
+      if (!seeded && normalizedLastSeen && now - normalizedLastSeen <= 30 * 60_000) saved[id] = record;
     }
     writeRoster(saved);
     return [...byPerson.values()];
@@ -546,7 +590,7 @@ export class MultiplayerClient {
     if (relayData?.ok) {
       const data = ntfyData?.ok ? {
         ...relayData,
-        players: mergeLists(relayData.players, ntfyData.players),
+        players: mergeRosterLists(relayData.players, ntfyData.players),
         incoming: mergeLists(relayData.incoming, ntfyData.incoming),
         events: mergeLists(relayData.events, ntfyData.events),
         game: relayData.game || ntfyData.game || null,

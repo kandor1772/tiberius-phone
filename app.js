@@ -1,13 +1,14 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v23";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v24";
 
-const ASSET_BUILD_ID = "authoritative-relay-roster-v23";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v24";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v89-pc-board-fit";
+const CURRENT_CACHE = "tiberius-phone-v90-pc-board-fit";
 const LEARNING_POLICY = "winner-only-v1";
+const ROSTER_STALE_MS = 90_000;
 
 function detectDefaultPlayerName() {
   const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
@@ -20,6 +21,15 @@ function detectDefaultPlayerName() {
 const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
 const OFFENSIVE_NAME_PATTERN = /(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)/i;
 const PERSON_ROSTER_KEYS = new Set(["mork", "liamz", "raypalmer", "queenorma", "rick", "droz", "spock"]);
+const PERSON_DISPLAY_NAMES = {
+  mork: "Mork",
+  liamz: "Liamz",
+  raypalmer: "RayPalmer",
+  queenorma: "QueeNorma",
+  rick: "rick",
+  droz: "Dr. Oz",
+  spock: "Spock",
+};
 
 function sanitizeDisplayName(value, fallback = DEFAULT_PLAYER_NAME) {
   const text = String(value || "").replace(/\s+/g, " ").trim().slice(0, 32);
@@ -46,6 +56,26 @@ function canonicalRosterKey(value) {
   return key;
 }
 
+function canonicalDisplayName(value, fallback = "") {
+  return PERSON_DISPLAY_NAMES[canonicalRosterKey(value)] || fallback;
+}
+
+function normalizeTimestamp(value, fallback = 0) {
+  if (value === null || value === undefined || value === "") return fallback;
+  if (typeof value === "string" && /[a-z:-]/i.test(value)) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return fallback;
+  return number < 10_000_000_000 ? number * 1000 : number;
+}
+
+function rosterRecordActive(player) {
+  const lastSeen = normalizeTimestamp(player?.last_seen || player?.updated_at);
+  return lastSeen > 0 && Date.now() - lastSeen <= ROSTER_STALE_MS;
+}
+
 function rosterIdentityKey(player) {
   const personKey = canonicalRosterKey(player?.handle || player?.name || player?.id);
   if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}`;
@@ -57,12 +87,15 @@ function rosterIdentityKey(player) {
 function betterRosterRecord(current, next) {
   if (!current) return next;
   if (!next) return current;
-  const currentActive = Boolean(current.active || current.available);
-  const nextActive = Boolean(next.active || next.available);
+  const currentActive = rosterRecordActive(current);
+  const nextActive = rosterRecordActive(next);
   if (nextActive !== currentActive) return nextActive ? next : current;
-  const currentSeen = Number(current.last_seen || 0);
-  const nextSeen = Number(next.last_seen || 0);
+  const currentSeen = normalizeTimestamp(current.last_seen || current.updated_at);
+  const nextSeen = normalizeTimestamp(next.last_seen || next.updated_at);
   if (nextSeen !== currentSeen) return nextSeen > currentSeen ? next : current;
+  const currentCanonical = canonicalDisplayName(current.name || current.handle || current.id, current.name || "");
+  const nextCanonical = canonicalDisplayName(next.name || next.handle || next.id, next.name || "");
+  if (nextCanonical && next.name === nextCanonical && current.name !== currentCanonical) return next;
   if (String(next.name || "").length < String(current.name || "").length) return next;
   return current;
 }
@@ -455,12 +488,15 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
   let handle = sanitizeDisplayName(player.handle || name, name);
   if (TEST_PROFILE_PATTERN.test(id) || TEST_PROFILE_PATTERN.test(name)) return null;
   const personKey = canonicalRosterKey(handle || name || id);
-  if (personKey === "liamz") {
-    id = "liamz";
-    name = "Liamz";
-    handle = "liamz";
+  if (PERSON_ROSTER_KEYS.has(personKey)) {
+    name = canonicalDisplayName(personKey, name);
+    handle = personKey;
+    if (canonicalRosterKey(id) === personKey || !String(player.device_id || player.deviceId || "").trim()) {
+      id = personKey;
+    }
   }
-  const active = Boolean(player.active || player.available || player.status === "active");
+  const lastSeen = normalizeTimestamp(player.last_seen || player.updated_at);
+  const active = rosterRecordActive({ ...player, last_seen: lastSeen });
   const seeded = Boolean(player.seeded);
   if (!active && !seeded && personKey !== "liamz") return null;
   return {
@@ -469,7 +505,7 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
     handle,
     device_id: String(player.device_id || player.deviceId || "").trim(),
     active,
-    last_seen: player.last_seen || player.updated_at || "",
+    last_seen: lastSeen || player.last_seen || player.updated_at || "",
     seeded,
   };
 }
