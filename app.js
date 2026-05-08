@@ -1,10 +1,10 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
 import { StockfishAdapter } from "./stockfish-adapter.js?v=solve-progress";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v8";
+import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay-roster-v9";
 
 const BUILD_ID = "authoritative-relay";
-const ASSET_BUILD_ID = "authoritative-relay-roster-v8";
+const ASSET_BUILD_ID = "authoritative-relay-roster-v9";
 const CACHE_PREFIX = "tiberius-phone-";
 const CURRENT_CACHE = `tiberius-phone-v71-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
@@ -149,8 +149,10 @@ let handleSyncTimer = null;
 let trainerTimer = null;
 let trainerLine = new Chess();
 let knownPlayers = [
-  { id: "rick", name: "rick", active: false, seeded: true },
-  { id: "queenorma", name: "QueeNorma", active: false, seeded: true },
+  { id: "raypalmer", name: "RayPalmer", active: true, available: true, seeded: true },
+  { id: "liamz", name: "Liamz", active: true, available: true, seeded: true },
+  { id: "queenorma", name: "QueeNorma", active: true, available: true, seeded: true },
+  { id: "rick", name: "rick", active: true, available: true, seeded: true },
 ];
 
 const PHONE_MEMORY_KEY = "tiberius-phone-local-memory-v1";
@@ -435,7 +437,7 @@ function normalizePlayer(player, { includeSelf = false } = {}) {
   const personKey = canonicalRosterKey(handle || name || id);
   if (personKey === "liamz") {
     id = "liamz";
-    name = "liamz";
+    name = "Liamz";
     handle = "liamz";
   }
   const active = Boolean(player.active || player.available || player.status === "active");

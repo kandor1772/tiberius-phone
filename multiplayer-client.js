@@ -18,8 +18,10 @@ function detectDefaultPlayerName() {
 const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
 const OFFENSIVE_NAME_PATTERN = /(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)/i;
 const FALLBACK_PLAYERS = [
-  { id: "rick", name: "rick", active: false, available: false, seeded: true },
-  { id: "queenorma", name: "QueeNorma", active: false, available: false, seeded: true },
+  { id: "raypalmer", name: "RayPalmer", active: true, available: true, seeded: true },
+  { id: "liamz", name: "Liamz", active: true, available: true, seeded: true },
+  { id: "queenorma", name: "QueeNorma", active: true, available: true, seeded: true },
+  { id: "rick", name: "rick", active: true, available: true, seeded: true },
 ];
 
 function detectPlatform() {
@@ -302,7 +304,7 @@ export class MultiplayerClient {
     const personKey = canonicalRosterKey(player?.handle || name || id);
     if (personKey === "liamz") {
       id = "liamz";
-      name = "liamz";
+      name = "Liamz";
     }
     if (DEFAULT_PLAYER_NAME && [id, name, player?.handle].some(value => identityKey(value) === identityKey(DEFAULT_PLAYER_NAME))) {
       id = canonicalHandle(DEFAULT_PLAYER_NAME);
