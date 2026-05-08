@@ -18,12 +18,12 @@ function detectDefaultPlayerName() {
 const DEFAULT_PLAYER_NAME = detectDefaultPlayerName();
 const OFFENSIVE_NAME_PATTERN = /(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)/i;
 const FALLBACK_PLAYERS = [
-  { id: "raypalmer", name: "RayPalmer", active: true, available: true, seeded: true },
-  { id: "liamz", name: "Liamz", active: true, available: true, seeded: true },
-  { id: "queenorma", name: "QueeNorma", active: true, available: true, seeded: true },
-  { id: "rick", name: "rick", active: true, available: true, seeded: true },
-  { id: "droz", name: "Dr. Oz", active: true, available: true, seeded: true },
-  { id: "spock", name: "Spock", active: true, available: true, seeded: true },
+  { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "liamz", name: "Liamz", active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "queenorma", name: "QueeNorma", active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "rick", name: "rick", active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "droz", name: "Dr. Oz", active: false, available: false, seeded: true, last_seen: 1 },
+  { id: "spock", name: "Spock", active: false, available: false, seeded: true, last_seen: 1 },
 ];
 
 function detectPlatform() {
