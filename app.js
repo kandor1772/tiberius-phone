@@ -5,7 +5,7 @@ import { MultiplayerClient } from "./multiplayer-client.js?v=authoritative-relay
 
 const BUILD_ID = "authoritative-relay";
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = `tiberius-phone-v65-${BUILD_ID}`;
+const CURRENT_CACHE = `tiberius-phone-v66-${BUILD_ID}`;
 const LEARNING_POLICY = "winner-only-v1";
 const DEFAULT_PLAYER_NAME = "";
 const SOLUTION_TARGETS = {
