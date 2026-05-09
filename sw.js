@@ -1,15 +1,15 @@
-const CACHE = "tiberius-phone-v107-install-diagnosis";
-const APP_ENTRY = "./?v=install-diagnosis-v41";
+const CACHE = "tiberius-phone-v108-android-notification-toggle";
+const APP_ENTRY = "./?v=android-notification-toggle-v42";
 const NOTIFICATION_STATE_CACHE = "tiberius-notification-state-v1";
 const INVITE_COUNT_ENTRY = "/__tiberius_invite_count";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=install-diagnosis-v41",
-  "style.css?v=install-diagnosis-v41",
-  "app.js?v=install-diagnosis-v41",
-  "multiplayer-client.js?v=install-diagnosis-v41",
+  "index.html?v=android-notification-toggle-v42",
+  "style.css?v=android-notification-toggle-v42",
+  "app.js?v=android-notification-toggle-v42",
+  "multiplayer-client.js?v=android-notification-toggle-v42",
   "tiberius-overlay.js",
-  "stockfish-adapter.js?v=install-diagnosis-v41",
+  "stockfish-adapter.js?v=android-notification-toggle-v42",
   "memory-sources.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
@@ -18,7 +18,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=install-diagnosis-v41",
+  "manifest.webmanifest?v=android-notification-toggle-v42",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"

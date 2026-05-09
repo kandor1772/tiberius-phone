@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=install-diagnosis-v41";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=android-notification-toggle-v42";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=install-diagnosis-v41";
+import { MultiplayerClient } from "./multiplayer-client.js?v=android-notification-toggle-v42";
 
-const ASSET_BUILD_ID = "install-diagnosis-v41";
+const ASSET_BUILD_ID = "android-notification-toggle-v42";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v107-install-diagnosis";
+const CURRENT_CACHE = "tiberius-phone-v108-android-notification-toggle";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
@@ -296,7 +296,7 @@ function renderInstallButton() {
   const installed = appInstallCompleted || isStandaloneApp();
   installAppBtn.hidden = installed;
   installAppBtn.disabled = false;
-  installAppBtn.textContent = deferredInstallPrompt ? "Install App" : isAppleMobile() ? "Install Steps" : "Download App";
+  installAppBtn.textContent = deferredInstallPrompt || isAndroidBrowser() ? "Install App" : isAppleMobile() ? "Install Steps" : "Download App";
 }
 
 function showInstallSheet(message = installFallbackText()) {
@@ -365,14 +365,13 @@ function renderNotificationButton() {
     return;
   }
   const permission = Notification.permission;
-  const enabled = permission === "granted" && activePushSubscription;
-  enableNotificationsBtn.disabled = notificationSubscriptionPending || permission === "denied" || enabled;
+  const hasSubscription = Boolean(activePushSubscription);
+  enableNotificationsBtn.disabled = notificationSubscriptionPending || (permission === "denied" && !hasSubscription);
   enableNotificationsBtn.textContent = notificationSubscriptionPending
-    ? "Enabling..."
-    : enabled ? "Notifications On"
+    ? hasSubscription ? "Turning Off..." : "Turning On..."
+    : hasSubscription ? "Turn Notifications Off"
       : permission === "denied" ? "Notifications Blocked"
-        : permission === "granted" ? "Repair Notifications"
-          : "Enable Notifications";
+        : "Turn Notifications On";
 }
 
 async function refreshPushSubscription(registration = null) {
@@ -437,6 +436,35 @@ async function enableNotifications() {
     notificationSubscriptionPending = false;
     render();
   }
+}
+
+async function disableNotifications() {
+  if (!pushSupported()) return;
+  notificationSubscriptionPending = true;
+  renderNotificationButton();
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    const serialized = serializePushSubscription(subscription) || activePushSubscription;
+    if (serialized) await multiplayer.unsubscribePush(serialized).catch(() => null);
+    if (subscription) await subscription.unsubscribe().catch(() => false);
+    activePushSubscription = null;
+    await clearNotificationCount();
+    onlineNotice = "Notifications turned off for this app.";
+  } catch (_err) {
+    onlineNotice = "Notifications could not be turned off.";
+  } finally {
+    notificationSubscriptionPending = false;
+    render();
+  }
+}
+
+function toggleNotifications() {
+  if (activePushSubscription) {
+    disableNotifications();
+    return;
+  }
+  enableNotifications();
 }
 
 function profileScope() {
@@ -1991,7 +2019,7 @@ onlineNameInput.addEventListener("keydown", event => {
   }
 });
 playHumanBtn.addEventListener("click", playHuman);
-enableNotificationsBtn?.addEventListener("click", enableNotifications);
+enableNotificationsBtn?.addEventListener("click", toggleNotifications);
 acceptChallengeBtn.addEventListener("click", () => answerChallenge(true));
 declineChallengeBtn.addEventListener("click", () => answerChallenge(false));
 

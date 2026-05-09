@@ -675,6 +675,16 @@ export class MultiplayerClient {
     return data || null;
   }
 
+  async unsubscribePush(subscription) {
+    if (!subscription?.endpoint) return null;
+    const data = await this.request("/push/unsubscribe", { subscription }, RELAY_TIMEOUT_MS);
+    if (data?.ok) {
+      this.connected = true;
+      return data;
+    }
+    return data || null;
+  }
+
   async challenge({ target = "", targetDevice = "", targetName = "", targetHandle = "", targetSurface = this.surface, random = false, inviterColor = "w", game }) {
     const payload = { target, targetDevice, targetName, targetHandle: targetHandle || targetName || target, targetSurface, random, inviterColor, game };
     const data = await this.request("/challenge", payload, RELAY_TIMEOUT_MS);

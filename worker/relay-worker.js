@@ -217,8 +217,10 @@ export class TiberiusRelay {
 
   removePushSubscription(endpoint) {
     const key = String(endpoint || "").trim();
-    if (!key || !Array.isArray(this.data.push_subscriptions)) return;
+    if (!key || !Array.isArray(this.data.push_subscriptions)) return 0;
+    const before = this.data.push_subscriptions.length;
     this.data.push_subscriptions = this.data.push_subscriptions.filter(subscription => pushEndpointKey(subscription) !== key);
+    return before - this.data.push_subscriptions.length;
   }
 
   findRecordFor(player) {
@@ -493,6 +495,7 @@ export class TiberiusRelay {
     const rename = Boolean(payload.rename);
     if (path.endsWith("/heartbeat")) return this.heartbeat(player, payload, rename);
     if (path.endsWith("/push/subscribe")) return this.subscribePush(player, payload, rename);
+    if (path.endsWith("/push/unsubscribe")) return this.unsubscribePush(player, payload, rename);
     if (path.endsWith("/challenge/respond")) return this.respond(player, payload, rename);
     if (path.endsWith("/challenge")) return this.challenge(player, payload, rename);
     if (path.endsWith("/game/move")) return this.move(player, payload, rename);
@@ -527,6 +530,22 @@ export class TiberiusRelay {
       self: publicPlayer(record),
       message: subscription ? "Notifications connected." : "No notification subscription was saved.",
     }, subscription ? 200 : 400);
+  }
+
+  unsubscribePush(player, payload, rename) {
+    const record = this.touchPlayer(player, rename);
+    const endpoint = pushEndpointKey(payload.subscription);
+    const removed = this.removePushSubscription(endpoint);
+    return jsonResponse({
+      ok: Boolean(endpoint),
+      removed,
+      players: this.roster(record.surface),
+      incoming: this.incomingFor(record),
+      events: this.popEventsFor(record),
+      progress: this.data.shared_progress,
+      self: publicPlayer(record),
+      message: endpoint ? "Notifications disconnected." : "No notification subscription was removed.",
+    }, endpoint ? 200 : 400);
   }
 
   async challenge(player, payload, rename) {
