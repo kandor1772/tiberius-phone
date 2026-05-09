@@ -2,6 +2,7 @@ const STALE_AFTER_MS = 90_000;
 const CHALLENGE_TTL_MS = 5 * 60_000;
 const PUSH_SUBSCRIPTION_TTL_MS = 45 * 24 * 60 * 60_000;
 const PUSH_TTL_SECONDS = 5 * 60;
+const PHONE_SYNC_EVENT_LIMIT = 5000;
 const PERSON_ROSTER_KEYS = new Set(["mork", "liamz", "raypalmer", "queenorma", "rick", "droz", "spock"]);
 const PERSON_DISPLAY_NAMES = {
   mork: "Mork",
@@ -119,6 +120,9 @@ function emptyState() {
     events: [],
     shared_progress: {},
     push_subscriptions: [],
+    phone_sync_events: [],
+    phone_sync_next_seq: 1,
+    core_nodes: {},
   };
 }
 
@@ -146,6 +150,9 @@ export class TiberiusRelay {
     this.data.events ||= [];
     this.data.shared_progress ||= {};
     this.data.push_subscriptions ||= [];
+    this.data.phone_sync_events ||= [];
+    this.data.phone_sync_next_seq ||= Math.max(1, ...this.data.phone_sync_events.map(event => Number(event.seq || 0) + 1));
+    this.data.core_nodes ||= {};
     return this.data;
   }
 
@@ -497,12 +504,97 @@ export class TiberiusRelay {
     if (progress.updated_at) this.data.shared_progress.updated_at = progress.updated_at;
   }
 
+  normalizePhoneSyncEvent(event) {
+    const item = event && typeof event === "object" ? event : {};
+    const id = String(item.id || crypto.randomUUID()).trim().slice(0, 128);
+    return {
+      ...item,
+      id,
+      type: String(item.type || "phone_sync").trim().slice(0, 64),
+      source: String(item.source || "tiberius-phone").trim().slice(0, 96),
+      received_at: new Date().toISOString(),
+      received_at_ms: Date.now(),
+    };
+  }
+
+  storePhoneSyncEvents(events = []) {
+    const incoming = Array.isArray(events) ? events : [];
+    const known = new Set(this.data.phone_sync_events.map(event => String(event.id || "")));
+    let stored = 0;
+    let duplicate = 0;
+    for (const rawEvent of incoming) {
+      const event = this.normalizePhoneSyncEvent(rawEvent);
+      if (!event.id || known.has(event.id)) {
+        duplicate += 1;
+        continue;
+      }
+      event.seq = Number(this.data.phone_sync_next_seq || 1);
+      this.data.phone_sync_next_seq = event.seq + 1;
+      known.add(event.id);
+      this.data.phone_sync_events.push(event);
+      stored += 1;
+    }
+    if (this.data.phone_sync_events.length > PHONE_SYNC_EVENT_LIMIT) {
+      this.data.phone_sync_events = this.data.phone_sync_events.slice(-PHONE_SYNC_EVENT_LIMIT);
+    }
+    return { stored, duplicate };
+  }
+
+  phoneSync(body) {
+    const result = this.storePhoneSyncEvents(body.events || []);
+    this.mergeProgress(body.progress || {});
+    return jsonResponse({
+      ok: true,
+      ...result,
+      cursor: Number(this.data.phone_sync_next_seq || 1) - 1,
+      progress: this.data.shared_progress,
+      message: "Phone sync accepted.",
+    });
+  }
+
+  coreSync(body) {
+    const bridge = body.bridge && typeof body.bridge === "object" ? body.bridge : {};
+    const bridgeId = String(bridge.id || body.bridge_id || "core-bridge").trim().slice(0, 96);
+    const cursor = Math.max(0, Number(body.cursor || 0) || 0);
+    const stored = this.storePhoneSyncEvents(body.events || []);
+    this.mergeProgress(body.progress || {});
+    this.data.core_nodes[bridgeId] = {
+      id: bridgeId,
+      name: String(bridge.name || bridgeId).trim().slice(0, 96),
+      host: String(bridge.host || "").trim().slice(0, 128),
+      last_seen: new Date().toISOString(),
+      last_seen_ms: Date.now(),
+      cursor,
+    };
+    const events = this.data.phone_sync_events
+      .filter(event => Number(event.seq || 0) > cursor)
+      .slice(0, 500);
+    const nextCursor = events.reduce((max, event) => Math.max(max, Number(event.seq || 0)), cursor);
+    return jsonResponse({
+      ok: true,
+      events,
+      cursor: nextCursor,
+      progress: this.data.shared_progress,
+      stored,
+      nodes: Object.values(this.data.core_nodes).map(node => ({
+        id: node.id,
+        name: node.name,
+        host: node.host,
+        last_seen: node.last_seen,
+        cursor: node.cursor,
+      })),
+      message: "Core sync ready.",
+    });
+  }
+
   async handlePost(path, body) {
     const player = { ...(body.player || {}) };
     const surface = String(body.surface || player.surface || "").trim().toLowerCase();
     if (surface) player.surface = surface;
     const payload = body.payload || {};
     const rename = Boolean(payload.rename);
+    if (path.endsWith("/phone-sync")) return this.phoneSync(body);
+    if (path.endsWith("/core/sync")) return this.coreSync(body);
     if (path.endsWith("/heartbeat")) return this.heartbeat(player, payload, rename);
     if (path.endsWith("/push/subscribe")) return this.subscribePush(player, payload, rename);
     if (path.endsWith("/push/unsubscribe")) return this.unsubscribePush(player, payload, rename);

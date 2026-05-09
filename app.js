@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=surface-roster-fix-v44";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=core-sync-bridge-v45";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=surface-roster-fix-v44";
+import { MultiplayerClient } from "./multiplayer-client.js?v=core-sync-bridge-v45";
 
-const ASSET_BUILD_ID = "surface-roster-fix-v44";
+const ASSET_BUILD_ID = "core-sync-bridge-v45";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v110-surface-roster-fix";
+const CURRENT_CACHE = "tiberius-phone-v111-core-sync-bridge";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
@@ -248,9 +248,12 @@ const PHONE_STATE_KEY = "tiberius-phone-state-v5-core";
 const SAVED_GAMES_KEY = "tiberius-phone-saved-games-v1";
 const SUSPENDED_GAME_KEY = "tiberius-phone-suspended-game-v1";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
-const SYNC_ENDPOINTS = ["https://eltiburon.duckdns.org/api/phone-sync"];
 const MULTIPLAYER_ENDPOINTS = [
   "https://tiberius-phone-relay.q79qmzkmk4.workers.dev",
+];
+const SYNC_ENDPOINTS = [
+  "https://eltiburon.duckdns.org/api/phone-sync",
+  `${MULTIPLAYER_ENDPOINTS[0]}/phone-sync`,
 ];
 const PUSH_PUBLIC_KEY = "BEWQk8y8ghPvY1cQb_uEMjPCVG8XgZEBSVb_7KVYatlodTbKoWq41O4rxAAo65NlGqqQSpnMurW-9Y0g_4gogV0";
 const multiplayer = new MultiplayerClient({ endpoints: MULTIPLAYER_ENDPOINTS });
@@ -1357,19 +1360,18 @@ async function flushSync() {
     syncSummary();
     return;
   }
+  let delivered = false;
   for (const endpoint of SYNC_ENDPOINTS) {
     try {
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ events }),
+        body: JSON.stringify({ events, progress: progressPayload() }),
       });
-      if (!response.ok) continue;
-      writeOutbox([]);
-      syncSummary();
-      return;
+      if (response.ok) delivered = true;
     } catch (_err) {}
   }
+  if (delivered) writeOutbox([]);
   syncSummary();
 }
 

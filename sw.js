@@ -1,15 +1,15 @@
-const CACHE = "tiberius-phone-v110-surface-roster-fix";
-const APP_ENTRY = "./?v=surface-roster-fix-v44";
+const CACHE = "tiberius-phone-v111-core-sync-bridge";
+const APP_ENTRY = "./?v=core-sync-bridge-v45";
 const NOTIFICATION_STATE_CACHE = "tiberius-notification-state-v1";
 const INVITE_COUNT_ENTRY = "/__tiberius_invite_count";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=surface-roster-fix-v44",
-  "style.css?v=surface-roster-fix-v44",
-  "app.js?v=surface-roster-fix-v44",
-  "multiplayer-client.js?v=surface-roster-fix-v44",
+  "index.html?v=core-sync-bridge-v45",
+  "style.css?v=core-sync-bridge-v45",
+  "app.js?v=core-sync-bridge-v45",
+  "multiplayer-client.js?v=core-sync-bridge-v45",
   "tiberius-overlay.js",
-  "stockfish-adapter.js?v=surface-roster-fix-v44",
+  "stockfish-adapter.js?v=core-sync-bridge-v45",
   "memory-sources.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
@@ -18,7 +18,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=surface-roster-fix-v44",
+  "manifest.webmanifest?v=core-sync-bridge-v45",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"
