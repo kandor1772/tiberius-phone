@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=install-app-v38";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=ios-install-v39";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=install-app-v38";
+import { MultiplayerClient } from "./multiplayer-client.js?v=ios-install-v39";
 
-const ASSET_BUILD_ID = "install-app-v38";
+const ASSET_BUILD_ID = "ios-install-v39";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v104-install-app";
+const CURRENT_CACHE = "tiberius-phone-v105-ios-install";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
@@ -279,7 +279,7 @@ function isAppleMobile() {
 }
 
 function installFallbackText() {
-  if (isAppleMobile()) return "Use Share, then Add to Home Screen.";
+  if (isAppleMobile()) return "Open this link in Safari, tap Safari's Share button, then Add to Home Screen. The in-app Share sheet cannot show Home Screen.";
   if (/android/i.test(navigator.userAgent || "")) return "Use the browser menu, then Install app or Add to Home screen.";
   return "Use the browser install option to add Tiberius as an app.";
 }
@@ -295,7 +295,7 @@ function renderInstallButton() {
 function showInstallSheet(message = installFallbackText()) {
   if (!installSheetEl) return;
   if (installSheetTextEl) installSheetTextEl.textContent = message;
-  if (shareInstallBtn) shareInstallBtn.textContent = navigator.share ? "Share Link" : "Copy Link";
+  if (shareInstallBtn) shareInstallBtn.textContent = isAppleMobile() ? "Copy Link" : navigator.share ? "Share Link" : "Copy Link";
   installSheetEl.classList.remove("hidden");
 }
 
@@ -306,13 +306,13 @@ function hideInstallSheet() {
 async function shareInstallLink() {
   const url = canonicalInstallUrl();
   try {
-    if (navigator.share) {
+    if (!isAppleMobile() && navigator.share) {
       await navigator.share({ title: "Tiberius", text: "Install Tiberius.", url });
       return;
     }
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(url);
-      onlineNotice = "Install link copied.";
+      onlineNotice = isAppleMobile() ? "Link copied. Open it in Safari, then use Safari Share -> Add to Home Screen." : "Install link copied.";
       render();
     }
   } catch (_err) {}
