@@ -115,7 +115,7 @@ function rosterIdentityKey(player) {
   const surface = String(player?.surface || "browser").trim().toLowerCase();
   if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}:surface:${surface}`;
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
-  if (deviceId) return `device:${deviceId}`;
+  if (deviceId) return `device:${deviceId}:surface:${surface}`;
   return personKey;
 }
 

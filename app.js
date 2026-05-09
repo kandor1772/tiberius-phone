@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=board-stability-v43";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=surface-roster-fix-v44";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=board-stability-v43";
+import { MultiplayerClient } from "./multiplayer-client.js?v=surface-roster-fix-v44";
 
-const ASSET_BUILD_ID = "board-stability-v43";
+const ASSET_BUILD_ID = "surface-roster-fix-v44";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v109-board-stability";
+const CURRENT_CACHE = "tiberius-phone-v110-surface-roster-fix";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
@@ -103,7 +103,7 @@ function rosterIdentityKey(player) {
   const surface = playerSurface(player);
   if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}:surface:${surface}`;
   const deviceId = String(player?.device_id || player?.deviceId || "").trim();
-  if (deviceId) return `device:${deviceId}`;
+  if (deviceId) return `device:${deviceId}:surface:${surface}`;
   return personKey;
 }
 
@@ -733,7 +733,7 @@ function currentPlayerRecord() {
   ].filter(Boolean));
   const matched = knownPlayers
     .filter(player => (
-      (sameSurface(player) || selfKeys.has(String(player.device_id || player.deviceId || "").trim()))
+      sameSurface(player)
       && (
         selfKeys.has(String(player.device_id || player.deviceId || "").trim())
         || selfKeys.has(String(playerSelectionKey(player)).trim())
@@ -752,7 +752,7 @@ function currentPlayerRecord() {
     name: selfName,
     handle: firstNamedIdentity(matched?.handle, multiplayer.player.handle),
     device_id: matched?.device_id || multiplayer.player.device_id || "",
-    surface: matched?.surface || multiplayer.surface,
+    surface: multiplayer.surface,
     active: true,
     available: true,
     self: true,

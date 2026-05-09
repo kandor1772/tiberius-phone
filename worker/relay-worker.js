@@ -158,7 +158,7 @@ export class TiberiusRelay {
     const surface = String(record.surface || "browser").trim().toLowerCase() || "browser";
     if (PERSON_ROSTER_KEYS.has(personKey)) return `person:${personKey}:surface:${surface}`;
     const deviceId = String(record.device_id || record.deviceId || "").trim();
-    if (deviceId) return `device:${deviceId}`;
+    if (deviceId) return `device:${deviceId}:surface:${surface}`;
     return personKey;
   }
 
@@ -227,7 +227,10 @@ export class TiberiusRelay {
     const deviceId = String(player.device_id || player.deviceId || "").trim();
     const surface = String(player.surface || "browser").trim().toLowerCase() || "browser";
     if (deviceId) {
-      const byDevice = this.data.players.find(record => String(record.device_id || "").trim() === deviceId);
+      const byDevice = this.data.players.find(record => (
+        String(record.device_id || "").trim() === deviceId
+        && String(record.surface || "browser").trim().toLowerCase() === surface
+      ));
       if (byDevice) return byDevice;
     }
     const incoming = this.playerDeliveryKeys(player);
@@ -245,14 +248,18 @@ export class TiberiusRelay {
     return null;
   }
 
-  uniqueName(desired, existing = null, platform = "", rename = false) {
+  uniqueName(desired, existing = null, platform = "", rename = false, surface = "") {
     let base = sanitizeDisplayName(desired, defaultNameForPlatform(platform));
     base = canonicalDisplayName(base, base);
     const baseKey = canonicalRosterKey(base);
     const existingKey = existing ? canonicalRosterKey(existing.name || existing.handle || existing.id) : "";
     if (existing && baseKey && baseKey === existingKey) return base;
+    const wantedSurface = String(surface || existing?.surface || "browser").trim().toLowerCase() || "browser";
     const occupied = new Set(this.data.players
-      .filter(record => record !== existing)
+      .filter(record => (
+        record !== existing
+        && String(record.surface || "browser").trim().toLowerCase() === wantedSurface
+      ))
       .map(record => canonicalRosterKey(record.name || record.handle || record.id))
       .filter(Boolean));
     if (existing && !rename) {
@@ -297,7 +304,7 @@ export class TiberiusRelay {
       || player.handle
       || defaultNameForPlatform(platform)
     );
-    const name = this.uniqueName(desiredName, existing, platform, rename);
+    const name = this.uniqueName(desiredName, existing, platform, rename, surface);
     const personKey = canonicalRosterKey(name || player.handle || playerId);
     const handle = PERSON_ROSTER_KEYS.has(personKey)
       ? personKey
@@ -491,7 +498,9 @@ export class TiberiusRelay {
   }
 
   async handlePost(path, body) {
-    const player = body.player || {};
+    const player = { ...(body.player || {}) };
+    const surface = String(body.surface || player.surface || "").trim().toLowerCase();
+    if (surface) player.surface = surface;
     const payload = body.payload || {};
     const rename = Boolean(payload.rename);
     if (path.endsWith("/heartbeat")) return this.heartbeat(player, payload, rename);
