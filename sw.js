@@ -1,15 +1,15 @@
-const CACHE = "tiberius-phone-v106-safari-install";
-const APP_ENTRY = "./?v=safari-install-v40";
+const CACHE = "tiberius-phone-v107-install-diagnosis";
+const APP_ENTRY = "./?v=install-diagnosis-v41";
 const NOTIFICATION_STATE_CACHE = "tiberius-notification-state-v1";
 const INVITE_COUNT_ENTRY = "/__tiberius_invite_count";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=safari-install-v40",
-  "style.css?v=safari-install-v40",
-  "app.js?v=safari-install-v40",
-  "multiplayer-client.js?v=safari-install-v40",
+  "index.html?v=install-diagnosis-v41",
+  "style.css?v=install-diagnosis-v41",
+  "app.js?v=install-diagnosis-v41",
+  "multiplayer-client.js?v=install-diagnosis-v41",
   "tiberius-overlay.js",
-  "stockfish-adapter.js?v=safari-install-v40",
+  "stockfish-adapter.js?v=install-diagnosis-v41",
   "memory-sources.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
@@ -18,7 +18,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=safari-install-v40",
+  "manifest.webmanifest?v=install-diagnosis-v41",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"
