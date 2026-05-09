@@ -1,15 +1,15 @@
-const CACHE = "tiberius-phone-v105-ios-install";
-const APP_ENTRY = "./?v=ios-install-v39";
+const CACHE = "tiberius-phone-v106-safari-install";
+const APP_ENTRY = "./?v=safari-install-v40";
 const NOTIFICATION_STATE_CACHE = "tiberius-notification-state-v1";
 const INVITE_COUNT_ENTRY = "/__tiberius_invite_count";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=ios-install-v39",
-  "style.css?v=ios-install-v39",
-  "app.js?v=ios-install-v39",
-  "multiplayer-client.js?v=ios-install-v39",
+  "index.html?v=safari-install-v40",
+  "style.css?v=safari-install-v40",
+  "app.js?v=safari-install-v40",
+  "multiplayer-client.js?v=safari-install-v40",
   "tiberius-overlay.js",
-  "stockfish-adapter.js?v=ios-install-v39",
+  "stockfish-adapter.js?v=safari-install-v40",
   "memory-sources.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
@@ -18,7 +18,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=ios-install-v39",
+  "manifest.webmanifest?v=safari-install-v40",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"
