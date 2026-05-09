@@ -15,7 +15,7 @@ const PERSON_DISPLAY_NAMES = {
 const TEST_PROFILE_PREFIXES = [
   "anon", "cf-test", "lan-test", "local-", "public-", "ray-test", "ray-lan",
   "ray-cf", "ray-clean", "ray-move", "ray-win", "norma-test", "norma-lan",
-  "norma-cf", "norma-clean", "norma-move", "norma-win", "codex-smoke",
+  "norma-cf", "norma-clean", "norma-move", "norma-win", "codex-",
 ];
 const OFFENSIVE_NAME_PATTERN = /(?:fuck|shit|bitch|asshole|bastard|cunt|dick|whore|slut|piss)/i;
 
@@ -480,6 +480,7 @@ export class TiberiusRelay {
       "stockfish_training_positions",
       "stockfish_agreements",
       "completed_games_evaluated",
+      "best_solution_progress_percent",
       "exact_positions",
     ]) {
       const current = Number(this.data.shared_progress[key] || 0);

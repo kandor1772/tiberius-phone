@@ -1,18 +1,20 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=android-notification-toggle-v42";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=board-stability-v43";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=android-notification-toggle-v42";
+import { MultiplayerClient } from "./multiplayer-client.js?v=board-stability-v43";
 
-const ASSET_BUILD_ID = "android-notification-toggle-v42";
+const ASSET_BUILD_ID = "board-stability-v43";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v108-android-notification-toggle";
+const CURRENT_CACHE = "tiberius-phone-v109-board-stability";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
 const STOCKFISH_TRAINING_DEPTH = 20;
 const TRAINING_LOOP_DELAY_MS = 250;
 const TRAINING_RETRY_DELAY_MS = 1000;
+const INTERACTIVE_STOCKFISH_TIMEOUT_MS = 12000;
+const TRAINING_STOCKFISH_TIMEOUT_MS = 15000;
 
 function detectDefaultPlayerName() {
   const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
@@ -48,7 +50,7 @@ const SOLUTION_TARGETS = {
   stockfishAnchors: 25000,
   agreement: 0.92,
 };
-const TEST_PROFILE_PATTERN = /^(anon(?:-|$)|cf-test|lan-test|local-|public-|ray-(?:test|lan|cf|clean|move|win)|norma-(?:test|lan|cf|clean|move|win)|codex-smoke)/i;
+const TEST_PROFILE_PATTERN = /^(anon(?:-|$)|cf-test|lan-test|local-|public-|ray-(?:test|lan|cf|clean|move|win)|norma-(?:test|lan|cf|clean|move|win)|codex-)/i;
 
 function isAnonIdentity(value) {
   const text = String(value || "").trim().toLowerCase();
@@ -538,7 +540,7 @@ function memorySummaryText() {
   return `Memory: ${summary.sources} source${summary.sources === 1 ? "" : "s"}, ${summary.globalMoves} learned patterns, ${summary.positions} exact positions, ${summary.learned} local moves.${observed}${loading}${failed}`;
 }
 
-function solutionProgress() {
+function solutionProgress({ commitBest = false } = {}) {
   const summary = overlay.sourceSummary();
   const meta = phoneMemory.meta || {};
   const successfulMoves = Number(meta.successful_moves_learned || 0);
@@ -551,9 +553,15 @@ function solutionProgress() {
   const anchorCoverage = Math.min(1, anchors / SOLUTION_TARGETS.stockfishAnchors);
   const agreementCoverage = Math.min(1, agreementRate / SOLUTION_TARGETS.agreement);
   const raw = (0.34 * positionCoverage) + (0.3 * winnerCoverage) + (0.24 * anchorCoverage) + (0.12 * agreementCoverage);
-  const percent = Math.min(99.9, raw * 100);
+  const rawPercent = Math.min(99.9, raw * 100);
+  const bestPercent = Math.max(rawPercent, Number(meta.best_solution_progress_percent || 0));
+  const percent = Math.min(99.9, bestPercent);
+  if (commitBest && rawPercent > Number(meta.best_solution_progress_percent || 0)) {
+    phoneMemory.meta.best_solution_progress_percent = rawPercent;
+    savePhoneMemory();
+  }
   const solved = positionCoverage >= 1 && winnerCoverage >= 1 && anchorCoverage >= 1 && agreementRate >= SOLUTION_TARGETS.agreement;
-  return { summary, successfulMoves, anchors, checked, agreementRate, percent, solved };
+  return { summary, successfulMoves, anchors, checked, agreementRate, percent, rawPercent, solved };
 }
 
 function progressPayload() {
@@ -565,6 +573,7 @@ function progressPayload() {
     stockfish_training_positions: progress.checked,
     stockfish_agreements: Number(meta.stockfish_agreements || 0),
     completed_games_evaluated: Number(meta.completed_games_evaluated || 0),
+    best_solution_progress_percent: Number(meta.best_solution_progress_percent || 0),
     exact_positions: progress.summary.positions,
     updated_at: new Date().toISOString(),
   };
@@ -580,6 +589,7 @@ function applySharedProgress(progress = {}) {
     ["stockfish_training_positions"],
     ["stockfish_agreements"],
     ["completed_games_evaluated"],
+    ["best_solution_progress_percent"],
   ]) {
     const local = Number(phoneMemory.meta[localKey] || 0);
     const remote = Number(progress[remoteKey] || 0);
@@ -597,7 +607,7 @@ function applySharedProgress(progress = {}) {
 
 function updateSolutionProgress() {
   if (!solutionProgressFillEl || !solutionProgressTextEl || !solutionProgressDetailEl) return;
-  const progress = solutionProgress();
+  const progress = solutionProgress({ commitBest: true });
   solutionProgressFillEl.style.width = `${Math.max(2, progress.percent).toFixed(1)}%`;
   solutionProgressTextEl.textContent = progress.solved
     ? "Solved condition reached for this model: enough successful winner lines, exact positions, and Stockfish anchors agree."
@@ -1063,6 +1073,16 @@ function applySuccessfulTrainingMove(board, move, source = "stockfish") {
   if (source === "stockfish") {
     phoneMemory.meta.stockfish_training_anchors = Number(phoneMemory.meta.stockfish_training_anchors || 0) + 1;
   }
+}
+
+function fallbackDecision(stockfishBest = "") {
+  const moves = chess.moves({ verbose: true });
+  if (!moves.length) return null;
+  const stockfishMove = stockfishBest ? moves.find(move => uci(move) === stockfishBest) : null;
+  const mate = moves.find(move => move.san.includes("#"));
+  const capture = moves.find(move => move.captured);
+  const move = stockfishMove || mate || capture || moves[0];
+  return { move, score: 0, fallback: true };
 }
 
 function rebuildOverlay() {
@@ -1633,7 +1653,7 @@ async function backgroundTrainingStep() {
   if (!stockfishReady || engineThinking || stockfish.isBusy()) return false;
   if (trainerLine.isGameOver() || trainerLine.history().length > 80) trainerLine = new Chess();
   const board = new Chess(trainerLine.fen());
-  const result = await stockfish.bestMove(board.fen(), { depth: STOCKFISH_TRAINING_DEPTH });
+  const result = await stockfish.bestMove(board.fen(), { depth: STOCKFISH_TRAINING_DEPTH, timeoutMs: TRAINING_STOCKFISH_TIMEOUT_MS });
   const best = result?.best || "";
   const move = board.moves({ verbose: true }).find(item => uci(item) === best);
   if (!move) {
@@ -1788,9 +1808,10 @@ async function engineMove() {
     render();
     return;
   }
+  if (stockfish.isBusy()) await stockfish.stopSearch();
   let stockfishBest = null;
   if (ready) {
-    const result = await stockfish.bestMove(chess.fen(), { depth: STOCKFISH_ANCHOR_DEPTH });
+    const result = await stockfish.bestMove(chess.fen(), { depth: STOCKFISH_ANCHOR_DEPTH, timeoutMs: INTERACTIVE_STOCKFISH_TIMEOUT_MS });
     stockfishBest = result?.best || null;
   }
   if (serial !== gameSerial || isHumanTurn() || !gameActive || gameResult) {
@@ -1798,9 +1819,10 @@ async function engineMove() {
     render();
     return;
   }
-  const decision = overlay.chooseMove(chess, stockfishBest);
+  const decision = overlay.chooseMove(chess, stockfishBest) || fallbackDecision(stockfishBest);
   if (!decision) {
     setThinking(false);
+    finishIfGameOver();
     render();
     return;
   }
@@ -1813,7 +1835,9 @@ async function engineMove() {
   whyTitleEl.textContent = `Tiberius chose ${played.san}`;
   whyTextEl.textContent = `${predictionLine()} Separately, Stockfish/Tiberius is preserving a hidden search line from the current board.`;
   whenTextEl.textContent = "Tiberius takes control when the opponent plays into the hidden prediction or when their reply worsens the eval. If they break the prediction, the next search has to prove control again from the new board.";
-  preserveText.textContent = `It preserved overlay score ${decision.score.toFixed(3)} from ${before.split(" ")[0].slice(0, 18)}...`;
+  preserveText.textContent = decision.fallback
+    ? "Stockfish or overlay did not return a usable decision in time, so Tiberius used the safest legal fallback instead of freezing."
+    : `It preserved overlay score ${decision.score.toFixed(3)} from ${before.split(" ")[0].slice(0, 18)}...`;
   tradeoffText.textContent = stockfishBest
     ? `Pure Stockfish anchor suggested ${stockfishBest}; Tiberius blended it with memory and structure.`
     : "Stockfish did not return an anchor, so this move came from packaged Tiberius memory and legal overlay search.";
@@ -2033,6 +2057,10 @@ moveInput.addEventListener("keydown", event => {
 window.addEventListener("focus", wakeOnlineRelay);
 window.addEventListener("online", wakeOnlineRelay);
 window.addEventListener("pageshow", wakeOnlineRelay);
+window.addEventListener("pagehide", () => {
+  savePhoneMemory();
+  saveState("pagehide", { sync: false });
+});
 window.addEventListener("beforeinstallprompt", event => {
   event.preventDefault();
   deferredInstallPrompt = event;

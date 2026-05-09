@@ -3,7 +3,7 @@
   "short_name": "Tiberius",
   "description": "On-device Tiberius chess overlay with Stockfish worker support.",
   "id": "./",
-  "start_url": "./?v=android-notification-toggle-v42",
+  "start_url": "./?v=board-stability-v43",
   "scope": "./",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "browser"],

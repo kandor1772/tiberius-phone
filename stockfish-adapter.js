@@ -43,6 +43,16 @@ export class StockfishAdapter {
     return this.pending.length > 0;
   }
 
+  async stopSearch(timeoutMs = 1200) {
+    const current = this.pending[0];
+    if (!current) return null;
+    this.send("stop");
+    return Promise.race([
+      current.promise,
+      new Promise(resolve => setTimeout(() => resolve(null), timeoutMs)),
+    ]);
+  }
+
   _onLine(line) {
     if (line === "readyok") {
       this.ready = true;
@@ -53,13 +63,33 @@ export class StockfishAdapter {
     if (line.startsWith("bestmove ")) {
       this.pending.shift();
       const best = line.split(/\s+/)[1] || "";
-      current.resolve({ best, lines: current.lines });
+      current.finish({ best, lines: current.lines });
     }
   }
 
-  async bestMove(fen, { depth = this.depth, movetime = null } = {}) {
+  async bestMove(fen, { depth = this.depth, movetime = null, timeoutMs = 15000 } = {}) {
     if (!this.worker || !this.ready) return null;
-    const result = new Promise(resolve => this.pending.push({ resolve, lines: [] }));
+    if (this.isBusy()) return null;
+    let entry;
+    const result = new Promise(resolve => {
+      entry = {
+        lines: [],
+        timer: null,
+        promise: null,
+        finish(value) {
+          if (entry.timer) clearTimeout(entry.timer);
+          resolve(value);
+        },
+      };
+    });
+    entry.promise = result;
+    entry.timer = setTimeout(() => {
+      const index = this.pending.indexOf(entry);
+      if (index >= 0) this.pending.splice(index, 1);
+      this.send("stop");
+      entry.finish(null);
+    }, Math.max(1000, timeoutMs));
+    this.pending.push(entry);
     this.send(`position fen ${fen}`);
     if (movetime) {
       this.send(`go movetime ${Math.max(10, Math.floor(movetime))}`);
