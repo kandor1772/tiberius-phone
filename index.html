@@ -6,10 +6,10 @@
   <meta name="theme-color" content="#151a24">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Tiberius">
-  <link rel="manifest" href="manifest.webmanifest?v=roster-seeds-v37">
+  <link rel="manifest" href="manifest.webmanifest?v=install-app-v38">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <title>Tiberius</title>
-  <link rel="stylesheet" href="style.css?v=pc-board-fit">
+  <link rel="stylesheet" href="style.css?v=install-app-v38">
 </head>
 <body>
   <main class="app-shell">
@@ -19,6 +19,7 @@
           <h1>Tiberius</h1>
           <p id="engineStatus">Booting phone engine...</p>
         </div>
+        <button id="installAppBtn" class="install-button" type="button">Install App</button>
       </header>
 
       <div class="action-stack">
@@ -147,6 +148,17 @@
     </section>
   </main>
 
-  <script type="module" src="app.js?v=roster-seeds-v37"></script>
+  <div id="installSheet" class="install-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="installSheetTitle">
+    <div class="install-sheet-panel">
+      <h2 id="installSheetTitle">Install Tiberius</h2>
+      <p id="installSheetText">Use the browser install option to add Tiberius as an app.</p>
+      <div class="online-actions compact">
+        <button id="shareInstallBtn" type="button">Share Link</button>
+        <button id="closeInstallSheetBtn" class="alt" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js?v=install-app-v38"></script>
 </body>
 </html>

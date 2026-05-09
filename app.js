@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=roster-seeds-v37";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=install-app-v38";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=roster-seeds-v37";
+import { MultiplayerClient } from "./multiplayer-client.js?v=install-app-v38";
 
-const ASSET_BUILD_ID = "roster-seeds-v37";
+const ASSET_BUILD_ID = "install-app-v38";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v103-roster-seeds";
+const CURRENT_CACHE = "tiberius-phone-v104-install-app";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
@@ -178,6 +178,11 @@ const solutionProgressFillEl = document.getElementById("solutionProgressFill");
 const solutionProgressTextEl = document.getElementById("solutionProgressText");
 const solutionProgressDetailEl = document.getElementById("solutionProgressDetail");
 const syncTextEl = document.getElementById("syncText");
+const installAppBtn = document.getElementById("installAppBtn");
+const installSheetEl = document.getElementById("installSheet");
+const installSheetTextEl = document.getElementById("installSheetText");
+const shareInstallBtn = document.getElementById("shareInstallBtn");
+const closeInstallSheetBtn = document.getElementById("closeInstallSheetBtn");
 const onlineNameInput = document.getElementById("onlineNameInput");
 const playerRosterEl = document.getElementById("playerRoster");
 const playHumanBtn = document.getElementById("playHumanBtn");
@@ -226,6 +231,8 @@ let trainerRunning = false;
 let trainerLine = new Chess();
 let activePushSubscription = null;
 let notificationSubscriptionPending = false;
+let deferredInstallPrompt = null;
+let appInstallCompleted = false;
 let knownPlayers = [
   { id: "raypalmer", name: "RayPalmer", active: false, available: false, seeded: true },
   { id: "liamz", name: "Liamz", active: false, available: false, seeded: true },
@@ -252,6 +259,82 @@ function canonicalizeBuildUrl() {
   if (url.searchParams.get("v") === BUILD_ID) return;
   url.searchParams.set("v", BUILD_ID);
   window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function canonicalInstallUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("v", BUILD_ID);
+  url.hash = "";
+  return url.href;
+}
+
+function isStandaloneApp() {
+  return Boolean(window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone);
+}
+
+function isAppleMobile() {
+  const ua = String(navigator.userAgent || "").toLowerCase();
+  const platform = String(navigator.userAgentData?.platform || navigator.platform || "").toLowerCase();
+  return /iphone|ipad|ipod/.test(ua) || (platform.includes("mac") && navigator.maxTouchPoints > 1);
+}
+
+function installFallbackText() {
+  if (isAppleMobile()) return "Use Share, then Add to Home Screen.";
+  if (/android/i.test(navigator.userAgent || "")) return "Use the browser menu, then Install app or Add to Home screen.";
+  return "Use the browser install option to add Tiberius as an app.";
+}
+
+function renderInstallButton() {
+  if (!installAppBtn) return;
+  const installed = appInstallCompleted || isStandaloneApp();
+  installAppBtn.hidden = installed;
+  installAppBtn.disabled = false;
+  installAppBtn.textContent = deferredInstallPrompt ? "Install App" : "Download App";
+}
+
+function showInstallSheet(message = installFallbackText()) {
+  if (!installSheetEl) return;
+  if (installSheetTextEl) installSheetTextEl.textContent = message;
+  if (shareInstallBtn) shareInstallBtn.textContent = navigator.share ? "Share Link" : "Copy Link";
+  installSheetEl.classList.remove("hidden");
+}
+
+function hideInstallSheet() {
+  installSheetEl?.classList.add("hidden");
+}
+
+async function shareInstallLink() {
+  const url = canonicalInstallUrl();
+  try {
+    if (navigator.share) {
+      await navigator.share({ title: "Tiberius", text: "Install Tiberius.", url });
+      return;
+    }
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+      onlineNotice = "Install link copied.";
+      render();
+    }
+  } catch (_err) {}
+}
+
+async function installApp() {
+  if (appInstallCompleted || isStandaloneApp()) return;
+  if (deferredInstallPrompt) {
+    const promptEvent = deferredInstallPrompt;
+    deferredInstallPrompt = null;
+    await promptEvent.prompt();
+    const choice = await promptEvent.userChoice.catch(() => null);
+    if (choice?.outcome === "accepted") {
+      onlineNotice = "Tiberius install started.";
+      hideInstallSheet();
+    } else {
+      showInstallSheet();
+    }
+    render();
+    return;
+  }
+  showInstallSheet();
 }
 
 async function cleanOldAppCaches() {
@@ -909,6 +992,7 @@ function render() {
   }
   updateSolutionProgress();
   syncSummary();
+  renderInstallButton();
   onlineSummary();
   renderInviteOutbox();
   renderSavedGames();
@@ -1894,6 +1978,12 @@ returnGameBtn.addEventListener("click", () => {
   const game = latestReturnableGame();
   if (game) loadGameRecord(game);
 });
+installAppBtn?.addEventListener("click", installApp);
+shareInstallBtn?.addEventListener("click", shareInstallLink);
+closeInstallSheetBtn?.addEventListener("click", hideInstallSheet);
+installSheetEl?.addEventListener("click", event => {
+  if (event.target === installSheetEl) hideInstallSheet();
+});
 onlineNameInput.addEventListener("change", () => {
   syncOnlineName({ heartbeat: true });
   render();
@@ -1925,6 +2015,18 @@ moveInput.addEventListener("keydown", event => {
 window.addEventListener("focus", wakeOnlineRelay);
 window.addEventListener("online", wakeOnlineRelay);
 window.addEventListener("pageshow", wakeOnlineRelay);
+window.addEventListener("beforeinstallprompt", event => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  renderInstallButton();
+});
+window.addEventListener("appinstalled", () => {
+  appInstallCompleted = true;
+  deferredInstallPrompt = null;
+  hideInstallSheet();
+  onlineNotice = "Tiberius installed.";
+  render();
+});
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") wakeOnlineRelay();
 });
