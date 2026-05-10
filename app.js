@@ -1,20 +1,25 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=core-sync-bridge-v45";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=board-priority-v46";
 import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=core-sync-bridge-v45";
+import { MultiplayerClient } from "./multiplayer-client.js?v=board-priority-v46";
 
-const ASSET_BUILD_ID = "core-sync-bridge-v45";
+const ASSET_BUILD_ID = "board-priority-v46";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v111-core-sync-bridge";
+const CURRENT_CACHE = "tiberius-phone-v112-board-priority";
 const LEARNING_POLICY = "winner-only-v1";
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
 const STOCKFISH_TRAINING_DEPTH = 20;
-const TRAINING_LOOP_DELAY_MS = 250;
-const TRAINING_RETRY_DELAY_MS = 1000;
+const TRAINING_LOOP_DELAY_MS = 1500;
+const TRAINING_RETRY_DELAY_MS = 2000;
+const TRAINING_IDLE_AFTER_BOARD_MS = 2500;
+const TRAINING_PERSIST_INTERVAL_MS = 5000;
+const TRAINING_SYNC_INTERVAL_MS = 15000;
+const TRAINING_SYNC_BATCH_SIZE = 12;
 const INTERACTIVE_STOCKFISH_TIMEOUT_MS = 12000;
 const TRAINING_STOCKFISH_TIMEOUT_MS = 15000;
+const SYNC_FLUSH_DELAY_MS = 1500;
 
 function detectDefaultPlayerName() {
   const platform = String(typeof navigator !== "undefined" ? (navigator.userAgentData?.platform || navigator.platform || "") : "").toLowerCase();
@@ -227,9 +232,15 @@ let heartbeatInFlight = false;
 let fastHeartbeatUntil = 0;
 let heartbeatTimer = null;
 let handleSyncTimer = null;
+let syncInFlight = false;
+let syncFlushTimer = null;
 let trainerTimer = null;
 let trainerRunning = false;
 let trainerLine = new Chess();
+let lastBoardInteractionAt = 0;
+let lastTrainingPersistAt = 0;
+let lastTrainingSyncAt = 0;
+let pendingTrainingSync = null;
 let activePushSubscription = null;
 let notificationSubscriptionPending = false;
 let deferredInstallPrompt = null;
@@ -1032,7 +1043,8 @@ function render() {
 }
 
 function tryBoardMove(from, to) {
-  const promotion = to.endsWith("8") ? "q" : undefined;
+  const piece = chess.get(from);
+  const promotion = piece?.type === "p" && (to.endsWith("8") || to.endsWith("1")) ? "q" : undefined;
   try {
     return chess.move({ from, to, promotion });
   } catch (_err) {
@@ -1086,6 +1098,15 @@ function fallbackDecision(stockfishBest = "") {
   const capture = moves.find(move => move.captured);
   const move = stockfishMove || mate || capture || moves[0];
   return { move, score: 0, fallback: true };
+}
+
+function playableDecision(decision, stockfishBest = "") {
+  const moves = chess.moves({ verbose: true });
+  if (!moves.length) return null;
+  const desired = decision?.move ? uci(decision.move) : "";
+  const legalMove = desired ? moves.find(move => uci(move) === desired) : null;
+  if (legalMove) return { ...(decision || {}), move: legalMove };
+  return fallbackDecision(stockfishBest);
 }
 
 function rebuildOverlay() {
@@ -1333,7 +1354,12 @@ function writeOutbox(events) {
   } catch (_err) {}
 }
 
-function queueSync(type, payload = {}) {
+function scheduleFlushSync(delay = SYNC_FLUSH_DELAY_MS) {
+  window.clearTimeout(syncFlushTimer);
+  syncFlushTimer = window.setTimeout(() => flushSync(), delay);
+}
+
+function queueSync(type, payload = {}, { immediate = false } = {}) {
   const snapshot = gameSnapshot();
   const event = {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -1350,28 +1376,39 @@ function queueSync(type, payload = {}) {
     source: "tiberius-phone-github-pages",
   };
   writeOutbox([...readOutbox(), event]);
-  flushSync();
+  scheduleFlushSync(immediate ? 0 : SYNC_FLUSH_DELAY_MS);
   syncSummary();
 }
 
 async function flushSync() {
+  if (syncInFlight) {
+    scheduleFlushSync(SYNC_FLUSH_DELAY_MS);
+    return;
+  }
   const events = readOutbox();
   if (!events.length) {
     syncSummary();
     return;
   }
+  syncInFlight = true;
   let delivered = false;
-  for (const endpoint of SYNC_ENDPOINTS) {
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ events, progress: progressPayload() }),
-      });
-      if (response.ok) delivered = true;
-    } catch (_err) {}
+  const sentIds = new Set(events.map(event => event.id).filter(Boolean));
+  try {
+    for (const endpoint of SYNC_ENDPOINTS) {
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ events, progress: progressPayload() }),
+        });
+        if (response.ok) delivered = true;
+      } catch (_err) {}
+    }
+  } finally {
+    syncInFlight = false;
   }
-  if (delivered) writeOutbox([]);
+  if (delivered) writeOutbox(readOutbox().filter(event => !sentIds.has(event.id)));
+  if (readOutbox().length) scheduleFlushSync(SYNC_FLUSH_DELAY_MS);
   syncSummary();
 }
 
@@ -1653,6 +1690,7 @@ function completeGameLearning(force = false) {
 
 async function backgroundTrainingStep() {
   if (!stockfishReady || engineThinking || stockfish.isBusy()) return false;
+  if (Date.now() - lastBoardInteractionAt < TRAINING_IDLE_AFTER_BOARD_MS) return false;
   if (trainerLine.isGameOver() || trainerLine.history().length > 80) trainerLine = new Chess();
   const board = new Chess(trainerLine.fen());
   const result = await stockfish.bestMove(board.fen(), { depth: STOCKFISH_TRAINING_DEPTH, timeoutMs: TRAINING_STOCKFISH_TIMEOUT_MS });
@@ -1670,17 +1708,50 @@ async function backgroundTrainingStep() {
   }
   phoneMemory.meta.last_stockfish_anchor = best;
   phoneMemory.meta.last_stockfish_training_at = new Date().toISOString();
-  trainerLine.move(move);
-  savePhoneMemory();
-  rebuildOverlay();
-  refreshEngineStatus();
-  queueSync("stockfish_training_anchor", {
+  trainerLine.move({ from: move.from, to: move.to, promotion: move.promotion });
+  pendingTrainingSync ||= { count: 0, anchors: [] };
+  pendingTrainingSync.count += 1;
+  pendingTrainingSync.anchors.push({
     fen: board.fen(),
     best_move: best,
     overlay_move: overlayChoice ? uci(overlayChoice.move) : "",
     agreement: Boolean(overlayChoice && uci(overlayChoice.move) === best),
   });
+  pendingTrainingSync.anchors = pendingTrainingSync.anchors.slice(-TRAINING_SYNC_BATCH_SIZE);
+  const now = Date.now();
+  if (now - lastTrainingPersistAt >= TRAINING_PERSIST_INTERVAL_MS) {
+    lastTrainingPersistAt = now;
+    savePhoneMemory();
+    rebuildOverlay();
+    refreshEngineStatus();
+  }
+  if (
+    pendingTrainingSync.count >= TRAINING_SYNC_BATCH_SIZE
+    || now - lastTrainingSyncAt >= TRAINING_SYNC_INTERVAL_MS
+  ) {
+    queueSync("stockfish_training_batch", {
+      count: pendingTrainingSync.count,
+      anchors: pendingTrainingSync.anchors,
+    });
+    pendingTrainingSync = null;
+    lastTrainingSyncAt = now;
+  }
   return true;
+}
+
+function flushTrainingSync() {
+  if (pendingTrainingSync?.count) {
+    queueSync("stockfish_training_batch", {
+      count: pendingTrainingSync.count,
+      anchors: pendingTrainingSync.anchors,
+    });
+    pendingTrainingSync = null;
+    lastTrainingSyncAt = Date.now();
+  }
+  savePhoneMemory();
+  rebuildOverlay();
+  refreshEngineStatus();
+  lastTrainingPersistAt = Date.now();
 }
 
 function startBackgroundTraining() {
@@ -1696,6 +1767,7 @@ function startBackgroundTraining() {
 }
 
 function onSquare(square) {
+  lastBoardInteractionAt = Date.now();
   if (engineThinking || !isHumanTurn() || chess.isGameOver()) return;
   const piece = chess.get(square);
   const ownPiece = piece && piece.color === humanColor;
@@ -1764,6 +1836,7 @@ function explainForHumanTurn() {
 }
 
 async function afterHumanMove(move) {
+  lastBoardInteractionAt = Date.now();
   render();
   whyTitleEl.textContent = `After your ${move.san}`;
   whyTextEl.textContent = isOnlineGame()
@@ -1796,6 +1869,7 @@ async function afterHumanMove(move) {
 }
 
 async function engineMove() {
+  lastBoardInteractionAt = Date.now();
   if (chess.isGameOver()) {
     completeGameLearning();
     render();
@@ -1813,15 +1887,24 @@ async function engineMove() {
   if (stockfish.isBusy()) await stockfish.stopSearch();
   let stockfishBest = null;
   if (ready) {
-    const result = await stockfish.bestMove(chess.fen(), { depth: STOCKFISH_ANCHOR_DEPTH, timeoutMs: INTERACTIVE_STOCKFISH_TIMEOUT_MS });
-    stockfishBest = result?.best || null;
+    try {
+      const result = await stockfish.bestMove(chess.fen(), { depth: STOCKFISH_ANCHOR_DEPTH, timeoutMs: INTERACTIVE_STOCKFISH_TIMEOUT_MS });
+      stockfishBest = result?.best || null;
+    } catch (_err) {
+      stockfishBest = null;
+    }
   }
   if (serial !== gameSerial || isHumanTurn() || !gameActive || gameResult) {
     setThinking(false);
     render();
     return;
   }
-  const decision = overlay.chooseMove(chess, stockfishBest) || fallbackDecision(stockfishBest);
+  let decision = null;
+  try {
+    decision = playableDecision(overlay.chooseMove(chess, stockfishBest), stockfishBest);
+  } catch (_err) {
+    decision = fallbackDecision(stockfishBest);
+  }
   if (!decision) {
     setThinking(false);
     finishIfGameOver();
@@ -1829,7 +1912,26 @@ async function engineMove() {
     return;
   }
   const before = chess.fen();
-  const played = chess.move(decision.move);
+  let played = null;
+  try {
+    played = chess.move({ from: decision.move.from, to: decision.move.to, promotion: decision.move.promotion });
+  } catch (_err) {
+    played = null;
+  }
+  if (!played) {
+    decision = fallbackDecision(stockfishBest);
+    try {
+      played = decision ? chess.move({ from: decision.move.from, to: decision.move.to, promotion: decision.move.promotion }) : null;
+    } catch (_err) {
+      played = null;
+    }
+  }
+  if (!played) {
+    setThinking(false);
+    statusMessage = "Tiberius could not find a legal reply. Start a new game or reload the board.";
+    render();
+    return;
+  }
   rememberMove(before, played);
   statusMessage = stockfishBest
     ? `Stockfish anchor available. Tiberius chose ${played.san}.`
@@ -1854,6 +1956,7 @@ async function engineMove() {
 }
 
 function submitMove() {
+  lastBoardInteractionAt = Date.now();
   if (engineThinking || !isHumanTurn()) return;
   const text = moveInput.value.trim();
   if (!text) return;
@@ -2060,6 +2163,7 @@ window.addEventListener("focus", wakeOnlineRelay);
 window.addEventListener("online", wakeOnlineRelay);
 window.addEventListener("pageshow", wakeOnlineRelay);
 window.addEventListener("pagehide", () => {
+  flushTrainingSync();
   savePhoneMemory();
   saveState("pagehide", { sync: false });
 });

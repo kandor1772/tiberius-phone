@@ -1,15 +1,15 @@
-const CACHE = "tiberius-phone-v111-core-sync-bridge";
-const APP_ENTRY = "./?v=core-sync-bridge-v45";
+const CACHE = "tiberius-phone-v112-board-priority";
+const APP_ENTRY = "./?v=board-priority-v46";
 const NOTIFICATION_STATE_CACHE = "tiberius-notification-state-v1";
 const INVITE_COUNT_ENTRY = "/__tiberius_invite_count";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=core-sync-bridge-v45",
-  "style.css?v=core-sync-bridge-v45",
-  "app.js?v=core-sync-bridge-v45",
-  "multiplayer-client.js?v=core-sync-bridge-v45",
+  "index.html?v=board-priority-v46",
+  "style.css?v=board-priority-v46",
+  "app.js?v=board-priority-v46",
+  "multiplayer-client.js?v=board-priority-v46",
   "tiberius-overlay.js",
-  "stockfish-adapter.js?v=core-sync-bridge-v45",
+  "stockfish-adapter.js?v=board-priority-v46",
   "memory-sources.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
@@ -18,7 +18,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=core-sync-bridge-v45",
+  "manifest.webmanifest?v=board-priority-v46",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"
