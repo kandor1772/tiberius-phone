@@ -1132,10 +1132,12 @@ function positionNovelty(chessLike = chess) {
   const key = typeof overlay.exactPositionKey === "function" ? overlay.exactPositionKey(chessLike) : "";
   const exact = typeof overlay.hasExactPosition === "function" ? overlay.hasExactPosition(chessLike) : false;
   const total = overlay.sourceSummary().positions;
+  const coverageAvailable = total > 0;
   return {
     exact_position_key: key,
-    charted: exact,
-    uncharted: !exact,
+    coverage_available: coverageAvailable,
+    charted: coverageAvailable ? exact : null,
+    uncharted: coverageAvailable ? !exact : false,
     exact_positions_total: total,
     packaged_exact_positions: PACKAGED_EXACT_POSITION_BASELINE,
     exact_positions_beyond_pack: Math.max(0, total - PACKAGED_EXACT_POSITION_BASELINE),
