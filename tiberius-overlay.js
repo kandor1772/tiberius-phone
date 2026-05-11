@@ -115,15 +115,46 @@ function mobility(chess, color) {
 function signatureAfter(chess, move, perspective) {
   const clone = new chess.constructor(chess.fen());
   clone.move(move);
+  const mat = material(clone, perspective);
+  const mob = mobility(clone, perspective);
+  const center = centerControl(clone, perspective);
+  const capture = move.captured ? 0.35 : 0;
+  const threat = move.san && move.san.includes("+") ? 0.55 : 0;
+  const restriction = clone.inCheck() ? (clone.turn() === perspective ? -1 : 1) : 0;
   return [
-    material(clone, perspective),
-    mobility(clone, perspective),
-    centerControl(clone, perspective),
+    mat,
+    mob,
+    center,
     0,
-    move.captured ? 0.35 : 0,
-    move.san && move.san.includes("+") ? 0.55 : 0,
-    clone.inCheck() ? (clone.turn() === perspective ? -1 : 1) : 0,
+    capture,
+    threat,
+    restriction,
   ];
+}
+
+function signatureDetails(sig) {
+  return {
+    material: Number(sig[0] || 0),
+    mobility: Number(sig[1] || 0),
+    center: Number(sig[2] || 0),
+    king_safety: Number(sig[3] || 0),
+    threat: Number(sig[5] || 0),
+    opponent_restriction: Number(sig[6] || 0),
+  };
+}
+
+function strategyFromDetails(details = {}) {
+  const labels = {
+    material: "material safety",
+    mobility: "mobility",
+    center: "center control",
+    king_safety: "king pressure",
+    threat: "threat building",
+    opponent_restriction: "restriction",
+  };
+  const ranked = Object.entries(details).sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0));
+  const positive = ranked.filter(([, value]) => Number(value || 0) > 0).slice(0, 2).map(([key]) => labels[key] || key);
+  return positive.length ? positive.join(" + ") : "balanced";
 }
 
 function kernel(target, sig) {
@@ -192,6 +223,10 @@ export function learnMemory(memory, chessBefore, move, bucket = "d") {
   memory.meta.local_learned_positions = Number(memory.meta.local_learned_positions || 0) + 1;
 }
 
+export function exactPositionKey(chess) {
+  return positionKey(chess);
+}
+
 export class TiberiusOverlay {
   constructor(memory) {
     this.memory = memory || { global_moves: {}, positions: {}, meta: {} };
@@ -212,6 +247,14 @@ export class TiberiusOverlay {
       observed,
       label: meta.source_label || meta.source || "memory",
     };
+  }
+
+  exactPositionKey(chess) {
+    return positionKey(chess);
+  }
+
+  hasExactPosition(chess) {
+    return Boolean(this.memory.positions?.[positionKey(chess)]);
   }
 
   predictHumanMove(chess) {
@@ -268,7 +311,14 @@ export class TiberiusOverlay {
       }
       const tactical = move.captured ? 1.15 : move.san.includes("+") ? 1.3 : 1;
       const sfBoost = stockfishBest && moveUci(move) === stockfishBest ? 1.35 : 1;
-      return { move, score: kernel(target, sig) * prior * tactical * sfBoost, sig };
+      const details = signatureDetails(sig);
+      return {
+        move,
+        score: kernel(target, sig) * prior * tactical * sfBoost,
+        sig,
+        details,
+        strategy: strategyFromDetails(details),
+      };
     }).sort((a, b) => b.score - a.score);
     return ranked[0];
   }

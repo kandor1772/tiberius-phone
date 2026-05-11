@@ -1,13 +1,14 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=board-priority-v46";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=human-observe";
-import { MultiplayerClient } from "./multiplayer-client.js?v=board-priority-v46";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=command-center-v47";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=command-center-v47";
+import { MultiplayerClient } from "./multiplayer-client.js?v=command-center-v47";
 
-const ASSET_BUILD_ID = "board-priority-v46";
+const ASSET_BUILD_ID = "command-center-v47";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v112-board-priority";
+const CURRENT_CACHE = "tiberius-phone-v113-command-center";
 const LEARNING_POLICY = "winner-only-v1";
+const PACKAGED_EXACT_POSITION_BASELINE = 380_994;
 const ROSTER_STALE_MS = 90_000;
 const STOCKFISH_ANCHOR_DEPTH = 20;
 const STOCKFISH_TRAINING_DEPTH = 20;
@@ -218,6 +219,9 @@ let gameActive = true;
 let gameResult = "";
 let statusMessage = "New game started. You are black.";
 let lastStrategy = "Balanced / not enough moves yet";
+let lastStrategyDetails = {};
+let lastStrategyVector = [];
+let lastNovelty = null;
 let gameSerial = 0;
 let currentGameId = "";
 let onlineGame = null;
@@ -575,7 +579,8 @@ function solutionProgress({ commitBest = false } = {}) {
     savePhoneMemory();
   }
   const solved = positionCoverage >= 1 && winnerCoverage >= 1 && anchorCoverage >= 1 && agreementRate >= SOLUTION_TARGETS.agreement;
-  return { summary, successfulMoves, anchors, checked, agreementRate, percent, rawPercent, solved };
+  const exactBeyondPack = Math.max(0, summary.positions - PACKAGED_EXACT_POSITION_BASELINE);
+  return { summary, successfulMoves, anchors, checked, agreementRate, percent, rawPercent, solved, exactBeyondPack };
 }
 
 function progressPayload() {
@@ -589,6 +594,8 @@ function progressPayload() {
     completed_games_evaluated: Number(meta.completed_games_evaluated || 0),
     best_solution_progress_percent: Number(meta.best_solution_progress_percent || 0),
     exact_positions: progress.summary.positions,
+    packaged_exact_positions: PACKAGED_EXACT_POSITION_BASELINE,
+    exact_positions_beyond_pack: progress.exactBeyondPack,
     updated_at: new Date().toISOString(),
   };
 }
@@ -626,7 +633,10 @@ function updateSolutionProgress() {
   solutionProgressTextEl.textContent = progress.solved
     ? "Solved condition reached for this model: enough successful winner lines, exact positions, and Stockfish anchors agree."
     : `${progress.percent.toFixed(2)}% toward the current proof target. Not solved yet.`;
-  solutionProgressDetailEl.textContent = `Winner moves ${progress.successfulMoves}/${SOLUTION_TARGETS.successfulMoves}; exact positions ${progress.summary.positions}/${SOLUTION_TARGETS.exactPositions}; Stockfish anchors ${progress.anchors}/${SOLUTION_TARGETS.stockfishAnchors}; anchor agreement ${(progress.agreementRate * 100).toFixed(1)}%.`;
+  const exactText = progress.summary.positions >= SOLUTION_TARGETS.exactPositions
+    ? `exact positions ${progress.summary.positions.toLocaleString()} total; +${progress.exactBeyondPack.toLocaleString()} beyond packaged baseline; original ${SOLUTION_TARGETS.exactPositions.toLocaleString()} target met`
+    : `exact positions ${progress.summary.positions.toLocaleString()} of ${SOLUTION_TARGETS.exactPositions.toLocaleString()} target`;
+  solutionProgressDetailEl.textContent = `Winner moves ${progress.successfulMoves.toLocaleString()}/${SOLUTION_TARGETS.successfulMoves.toLocaleString()}; ${exactText}; Stockfish anchors ${progress.anchors.toLocaleString()}/${SOLUTION_TARGETS.stockfishAnchors.toLocaleString()}; anchor agreement ${(progress.agreementRate * 100).toFixed(1)}%.`;
 }
 
 function refreshEngineStatus() {
@@ -677,6 +687,7 @@ function syncSummary() {
 
 function gameSnapshot() {
   const id = ensureGameId();
+  const currentNovelty = safePositionNovelty();
   return {
     id,
     active: gameActive && !gameResult,
@@ -690,6 +701,13 @@ function gameSnapshot() {
     result: gameResult,
     turn: colorName(chess.turn()),
     moves: chess.history(),
+    last_strategy: lastStrategy,
+    strategy_details: lastStrategyDetails,
+    strategy_vector: lastStrategyVector,
+    position_novelty: currentNovelty,
+    exact_position_key: currentNovelty.exact_position_key,
+    uncharted_position: currentNovelty.uncharted,
+    last_position_novelty: lastNovelty,
     updated_at: new Date().toISOString(),
   };
 }
@@ -1066,6 +1084,7 @@ function learnObservedHumanMove(beforeFen, move, actor = "human") {
     uci: uci(move),
     learned_bucket: "pending_result",
     before_fen: beforeFen,
+    position_novelty: moveNoveltyRecord(beforeFen, move, actor),
   });
 }
 
@@ -1097,7 +1116,7 @@ function fallbackDecision(stockfishBest = "") {
   const mate = moves.find(move => move.san.includes("#"));
   const capture = moves.find(move => move.captured);
   const move = stockfishMove || mate || capture || moves[0];
-  return { move, score: 0, fallback: true };
+  return { move, score: 0, fallback: true, details: {}, strategy: "legal fallback" };
 }
 
 function playableDecision(decision, stockfishBest = "") {
@@ -1107,6 +1126,68 @@ function playableDecision(decision, stockfishBest = "") {
   const legalMove = desired ? moves.find(move => uci(move) === desired) : null;
   if (legalMove) return { ...(decision || {}), move: legalMove };
   return fallbackDecision(stockfishBest);
+}
+
+function positionNovelty(chessLike = chess) {
+  const key = typeof overlay.exactPositionKey === "function" ? overlay.exactPositionKey(chessLike) : "";
+  const exact = typeof overlay.hasExactPosition === "function" ? overlay.hasExactPosition(chessLike) : false;
+  const total = overlay.sourceSummary().positions;
+  return {
+    exact_position_key: key,
+    charted: exact,
+    uncharted: !exact,
+    exact_positions_total: total,
+    packaged_exact_positions: PACKAGED_EXACT_POSITION_BASELINE,
+    exact_positions_beyond_pack: Math.max(0, total - PACKAGED_EXACT_POSITION_BASELINE),
+  };
+}
+
+function safePositionNovelty(fen = "") {
+  try {
+    return fen ? positionNovelty(new Chess(fen)) : positionNovelty();
+  } catch (_err) {
+    return positionNovelty();
+  }
+}
+
+function vectorFromDecision(decision) {
+  return Array.isArray(decision?.sig) ? decision.sig.map(value => Number(value || 0)) : [];
+}
+
+function detailsFromDecision(decision) {
+  const details = decision?.details || {};
+  return {
+    material: Number(details.material || 0),
+    mobility: Number(details.mobility || 0),
+    center: Number(details.center || 0),
+    king_safety: Number(details.king_safety || 0),
+    threat: Number(details.threat || 0),
+    opponent_restriction: Number(details.opponent_restriction || 0),
+  };
+}
+
+function moveNoveltyRecord(beforeFen, move, by, extra = {}) {
+  const before = safePositionNovelty(beforeFen);
+  const after = safePositionNovelty();
+  return {
+    ...before,
+    before_fen: beforeFen,
+    after_fen: chess.fen(),
+    after_exact_position_key: after.exact_position_key,
+    after_charted: after.charted,
+    after_uncharted: after.uncharted,
+    san: move?.san || "",
+    uci: move ? uci(move) : "",
+    by,
+    ...extra,
+  };
+}
+
+function resetAnalysisContext() {
+  lastStrategy = "Balanced / not enough moves yet";
+  lastStrategyDetails = {};
+  lastStrategyVector = [];
+  lastNovelty = null;
 }
 
 function rebuildOverlay() {
@@ -1146,6 +1227,9 @@ function gameRecord(reason = "progress") {
     reason,
     saved_at: new Date().toISOString(),
     last_strategy: lastStrategy,
+    strategy_details: lastStrategyDetails,
+    strategy_vector: lastStrategyVector,
+    last_position_novelty: lastNovelty,
     status_message: statusMessage,
     trajectory,
     online_game: onlineGame,
@@ -1180,6 +1264,7 @@ function terminateSavedGame(id) {
     onlineGame = null;
     selected = null;
     trajectory = [];
+    resetAnalysisContext();
     statusMessage = "Saved game terminated. New board started.";
     saveState("terminated_current", { sync: false });
     queueSync("saved_game_terminated", { terminated_game_id: id, was_current: true });
@@ -1251,6 +1336,9 @@ function saveState(reason = "progress", { sync = true } = {}) {
       gameResult,
       statusMessage,
       lastStrategy,
+      lastStrategyDetails,
+      lastStrategyVector,
+      lastNovelty,
       history: chess.history(),
       trajectory,
       onlineGame,
@@ -1272,6 +1360,9 @@ function loadSavedState() {
     onlineGame = saved.onlineGame || null;
     statusMessage = saved.statusMessage || `Restored game. You are ${colorName(humanColor)}.`;
     lastStrategy = saved.lastStrategy || lastStrategy;
+    lastStrategyDetails = saved.lastStrategyDetails || {};
+    lastStrategyVector = Array.isArray(saved.lastStrategyVector) ? saved.lastStrategyVector : [];
+    lastNovelty = saved.lastNovelty || null;
     trajectory = Array.isArray(saved.trajectory) ? saved.trajectory : [];
     if (Array.isArray(saved.history) && saved.history.length) {
       chess.reset();
@@ -1295,6 +1386,9 @@ function loadGameRecord(record) {
   onlineGame = record.online_game || null;
   statusMessage = `Restored ${record.id}.`;
   lastStrategy = record.last_strategy || lastStrategy;
+  lastStrategyDetails = record.strategy_details || {};
+  lastStrategyVector = Array.isArray(record.strategy_vector) ? record.strategy_vector : [];
+  lastNovelty = record.last_position_novelty || null;
   trajectory = Array.isArray(record.trajectory) ? record.trajectory : [];
   selected = null;
   engineThinking = false;
@@ -1457,6 +1551,7 @@ function enterOnlineGame(game, role = "relay") {
   selected = null;
   engineThinking = false;
   trajectory = [];
+  resetAnalysisContext();
   statusMessage = `Human game started against ${onlineGame.opponent}. You are ${colorName(humanColor)}.`;
   onlineNotice = "Tiberius paused; this human game starts from a clean board.";
   saveState("human_game_start");
@@ -1480,6 +1575,7 @@ function applyRemoteMove(event) {
     : chess.move(move, { sloppy: true });
   if (!played) return;
   rememberMove(beforeFen, played);
+  lastNovelty = moveNoveltyRecord(beforeFen, played, "remote_human");
   learnObservedHumanMove(beforeFen, played, "remote_human");
   statusMessage = `${onlineGame.opponent} played ${played.san}.`;
   finishIfGameOver();
@@ -1663,6 +1759,11 @@ function finishIfGameOver() {
   queueSync(isOnlineGame() ? "human_game_complete" : "game_complete", {
     online_game_id: onlineGame?.id || null,
     opponent: onlineGame?.opponent || null,
+    game: gameRecord("complete"),
+    last_strategy: lastStrategy,
+    strategy_details: lastStrategyDetails,
+    strategy_vector: lastStrategyVector,
+    last_position_novelty: lastNovelty,
   });
 }
 
@@ -1716,6 +1817,10 @@ async function backgroundTrainingStep() {
     best_move: best,
     overlay_move: overlayChoice ? uci(overlayChoice.move) : "",
     agreement: Boolean(overlayChoice && uci(overlayChoice.move) === best),
+    strategy: overlayChoice?.strategy || "stockfish anchor",
+    strategy_details: detailsFromDecision(overlayChoice),
+    strategy_vector: vectorFromDecision(overlayChoice),
+    position_novelty: positionNovelty(board),
   });
   pendingTrainingSync.anchors = pendingTrainingSync.anchors.slice(-TRAINING_SYNC_BATCH_SIZE);
   const now = Date.now();
@@ -1790,7 +1895,14 @@ function onSquare(square) {
     selected = null;
     if (result) {
       rememberMove(beforeFen, result);
+      lastNovelty = moveNoveltyRecord(beforeFen, result, "local_human");
       learnObservedHumanMove(beforeFen, result, "local_human");
+      queueSync("move", {
+        san: result.san,
+        uci: uci(result),
+        by: "human",
+        position_novelty: lastNovelty,
+      });
       afterHumanMove(result);
       return;
     }
@@ -1946,12 +2058,32 @@ async function engineMove() {
     ? `Pure Stockfish anchor suggested ${stockfishBest}; Tiberius blended it with memory and structure.`
     : "Stockfish did not return an anchor, so this move came from packaged Tiberius memory and legal overlay search.";
   coachTextEl.textContent = "Puzzle for the opponent: Tiberius just named what it thinks you will do. If it is right, ask whether you are walking into habit. If it is wrong, make the move that changes the position class without hanging the eval.";
-  lastStrategy = stockfishBest && uci(played) === stockfishBest ? "Stockfish anchored / memory blended" : "Memory overlay deviation";
+  lastStrategyDetails = detailsFromDecision(decision);
+  lastStrategyVector = vectorFromDecision(decision);
+  const decisionStrategy = decision?.strategy || "memory overlay";
+  lastStrategy = decision.fallback
+    ? "legal fallback"
+    : stockfishBest && uci(played) === stockfishBest ? `Stockfish anchored / ${decisionStrategy}` : decisionStrategy;
+  lastNovelty = moveNoveltyRecord(before, played, "tiberius", {
+    strategy: lastStrategy,
+    strategy_details: lastStrategyDetails,
+    strategy_vector: lastStrategyVector,
+    stockfish_best: stockfishBest || "",
+  });
   setThinking(false);
   finishIfGameOver();
   completeGameLearning();
   saveState();
-  queueSync("move", { san: played.san, uci: uci(played), by: "tiberius" });
+  queueSync("move", {
+    san: played.san,
+    uci: uci(played),
+    by: "tiberius",
+    strategy: lastStrategy,
+    strategy_details: lastStrategyDetails,
+    strategy_vector: lastStrategyVector,
+    position_novelty: lastNovelty,
+    stockfish_best: stockfishBest || "",
+  });
   render();
 }
 
@@ -1968,10 +2100,16 @@ function submitMove() {
     return;
   }
   rememberMove(beforeFen, result);
+  lastNovelty = moveNoveltyRecord(beforeFen, result, "human");
   learnObservedHumanMove(beforeFen, result, "local_human");
   statusMessage = `You played ${result.san}.`;
   saveState();
-  queueSync("move", { san: result.san, uci: uci(result), by: "human" });
+  queueSync("move", {
+    san: result.san,
+    uci: uci(result),
+    by: "human",
+    position_novelty: lastNovelty,
+  });
   moveInput.value = "";
   afterHumanMove(result);
 }
@@ -2091,7 +2229,7 @@ function startNewGame(color) {
   gameResult = "";
   onlineGame = null;
   statusMessage = `New game started. You are ${colorName(humanColor)}.`;
-  lastStrategy = "Balanced / not enough moves yet";
+  resetAnalysisContext();
   selected = null;
   trajectory = [];
   moveInput.value = "";
