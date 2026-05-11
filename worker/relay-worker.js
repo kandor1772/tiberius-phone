@@ -2,7 +2,7 @@ const STALE_AFTER_MS = 90_000;
 const CHALLENGE_TTL_MS = 5 * 60_000;
 const PUSH_SUBSCRIPTION_TTL_MS = 45 * 24 * 60 * 60_000;
 const PUSH_TTL_SECONDS = 5 * 60;
-const PHONE_SYNC_EVENT_LIMIT = 5000;
+const PHONE_SYNC_EVENT_LIMIT = 1500;
 const PERSON_ROSTER_KEYS = new Set(["mork", "liamz", "raypalmer", "queenorma", "rick", "droz", "spock"]);
 const PERSON_DISPLAY_NAMES = {
   mork: "Mork",
@@ -126,6 +126,55 @@ function emptyState() {
   };
 }
 
+function compactGameRecord(game, eventType = "") {
+  if (!game || typeof game !== "object") return game;
+  const complete = eventType.includes("complete") || Boolean(game.result);
+  const compact = {
+    id: game.id || "",
+    active: Boolean(game.active),
+    status: game.status || "",
+    game_id: game.game_id || null,
+    fen: game.fen || "",
+    human_color: game.human_color || "",
+    opponent_color: game.opponent_color || "",
+    opponent: game.opponent || "",
+    result: game.result || "",
+    turn: game.turn || "",
+    moves: Array.isArray(game.moves) ? game.moves.slice(-240) : [],
+    last_strategy: game.last_strategy || "",
+    strategy_details: game.strategy_details || {},
+    strategy_vector: Array.isArray(game.strategy_vector) ? game.strategy_vector.slice(0, 16) : [],
+    position_novelty: game.position_novelty || null,
+    exact_position_key: game.exact_position_key || "",
+    uncharted_position: Boolean(game.uncharted_position),
+    last_position_novelty: game.last_position_novelty || null,
+    updated_at: game.updated_at || "",
+  };
+  if (complete && typeof game.pgn === "string") compact.pgn = game.pgn.slice(-12000);
+  if (complete && Array.isArray(game.trajectory)) compact.trajectory = game.trajectory.slice(-240);
+  if (game.online_game) compact.online_game = game.online_game;
+  return compact;
+}
+
+function compactPhoneSyncEvent(event) {
+  const item = event && typeof event === "object" ? { ...event } : {};
+  const type = String(item.type || "phone_sync").trim().slice(0, 64);
+  const compact = {
+    ...item,
+    type,
+    game: compactGameRecord(item.game, type),
+  };
+  if (typeof compact.pgn === "string" && !type.includes("complete")) delete compact.pgn;
+  if (compact.payload && typeof compact.payload === "object") {
+    compact.payload = { ...compact.payload };
+    if (compact.payload.game) compact.payload.game = compactGameRecord(compact.payload.game, type);
+    if (Array.isArray(compact.payload.anchors)) {
+      compact.payload.anchors = compact.payload.anchors.slice(-32);
+    }
+  }
+  return compact;
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return jsonResponse({ ok: true });
@@ -151,6 +200,7 @@ export class TiberiusRelay {
     this.data.shared_progress ||= {};
     this.data.push_subscriptions ||= [];
     this.data.phone_sync_events ||= [];
+    this.data.phone_sync_events = this.data.phone_sync_events.slice(-PHONE_SYNC_EVENT_LIMIT).map(compactPhoneSyncEvent);
     this.data.phone_sync_next_seq ||= Math.max(1, ...this.data.phone_sync_events.map(event => Number(event.seq || 0) + 1));
     this.data.core_nodes ||= {};
     return this.data;
@@ -531,7 +581,7 @@ export class TiberiusRelay {
       event.seq = Number(this.data.phone_sync_next_seq || 1);
       this.data.phone_sync_next_seq = event.seq + 1;
       known.add(event.id);
-      this.data.phone_sync_events.push(event);
+      this.data.phone_sync_events.push(compactPhoneSyncEvent(event));
       stored += 1;
     }
     if (this.data.phone_sync_events.length > PHONE_SYNC_EVENT_LIMIT) {
