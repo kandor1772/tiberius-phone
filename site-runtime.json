@@ -1,0 +1,7 @@
+{
+  "mode": "static-local",
+  "description": "Default runtime is independent of the Mac: packaged memory plus browser-local saved games, learning, and progress. Add CSUN endpoints here after the remote desktop address is known.",
+  "sync_endpoints": [],
+  "multiplayer_endpoints": [],
+  "memory_sources": []
+}

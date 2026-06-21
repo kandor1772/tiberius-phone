@@ -1,16 +1,17 @@
-const CACHE = "tiberius-phone-v113-command-center";
-const APP_ENTRY = "./?v=command-center-v47";
+const CACHE = "tiberius-phone-v114-static-local";
+const APP_ENTRY = "./?v=command-center-v48-static-local";
 const NOTIFICATION_STATE_CACHE = "tiberius-notification-state-v1";
 const INVITE_COUNT_ENTRY = "/__tiberius_invite_count";
 const ASSETS = [
   APP_ENTRY,
-  "index.html?v=command-center-v47",
-  "style.css?v=command-center-v47",
-  "app.js?v=command-center-v47",
-  "multiplayer-client.js?v=command-center-v47",
-  "tiberius-overlay.js?v=command-center-v47",
-  "stockfish-adapter.js?v=command-center-v47",
+  "index.html?v=command-center-v48-static-local",
+  "style.css?v=command-center-v48-static-local",
+  "app.js?v=command-center-v48-static-local",
+  "multiplayer-client.js?v=command-center-v48-static-local",
+  "tiberius-overlay.js?v=command-center-v48-static-local",
+  "stockfish-adapter.js?v=command-center-v48-static-local",
   "memory-sources.json",
+  "site-runtime.json",
   "tiberius-memory-full.json.gz",
   "vendor/stockfish/stockfish.js",
   "vendor/stockfish/stockfish.wasm",
@@ -18,7 +19,7 @@ const ASSETS = [
   "vendor/stockfish/README.md",
   "vendor/stockfish/UPSTREAM_README.md",
   "tiberius-memory-lite.json",
-  "manifest.webmanifest?v=command-center-v47",
+  "manifest.webmanifest?v=command-center-v48-static-local",
   "icon.svg",
   "LICENSES.md",
   "MULTIPLAYER_RELAY.md"

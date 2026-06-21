@@ -1,12 +1,12 @@
 import { Chess } from "https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js";
-import { StockfishAdapter } from "./stockfish-adapter.js?v=command-center-v47";
-import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=command-center-v47";
-import { MultiplayerClient } from "./multiplayer-client.js?v=command-center-v47";
+import { StockfishAdapter } from "./stockfish-adapter.js?v=command-center-v48-static-local";
+import { emptyMemory, learnMemory, mergeMemorySources, TiberiusOverlay } from "./tiberius-overlay.js?v=command-center-v48-static-local";
+import { MultiplayerClient } from "./multiplayer-client.js?v=command-center-v48-static-local";
 
-const ASSET_BUILD_ID = "command-center-v47";
+const ASSET_BUILD_ID = "command-center-v48-static-local";
 const BUILD_ID = ASSET_BUILD_ID;
 const CACHE_PREFIX = "tiberius-phone-";
-const CURRENT_CACHE = "tiberius-phone-v113-command-center";
+const CURRENT_CACHE = "tiberius-phone-v114-static-local";
 const LEARNING_POLICY = "winner-only-v1";
 const PACKAGED_EXACT_POSITION_BASELINE = 380_994;
 const ROSTER_STALE_MS = 90_000;
@@ -263,15 +263,12 @@ const PHONE_STATE_KEY = "tiberius-phone-state-v5-core";
 const SAVED_GAMES_KEY = "tiberius-phone-saved-games-v1";
 const SUSPENDED_GAME_KEY = "tiberius-phone-suspended-game-v1";
 const PHONE_OUTBOX_KEY = "tiberius-phone-sync-outbox-v1";
-const MULTIPLAYER_ENDPOINTS = [
-  "https://tiberius-phone-relay.q79qmzkmk4.workers.dev",
-];
-const SYNC_ENDPOINTS = [
-  "https://eltiburon.duckdns.org/api/phone-sync",
-  `${MULTIPLAYER_ENDPOINTS[0]}/phone-sync`,
-];
 const PUSH_PUBLIC_KEY = "BEWQk8y8ghPvY1cQb_uEMjPCVG8XgZEBSVb_7KVYatlodTbKoWq41O4rxAAo65NlGqqQSpnMurW-9Y0g_4gogV0";
-const multiplayer = new MultiplayerClient({ endpoints: MULTIPLAYER_ENDPOINTS });
+const DEFAULT_SYNC_ENDPOINTS = [];
+const DEFAULT_MULTIPLAYER_ENDPOINTS = [];
+let syncEndpoints = [...DEFAULT_SYNC_ENDPOINTS];
+let siteRuntimeMode = "static-local";
+const multiplayer = new MultiplayerClient({ endpoints: [...DEFAULT_MULTIPLAYER_ENDPOINTS] });
 
 function canonicalizeBuildUrl() {
   const url = new URL(window.location.href);
@@ -643,7 +640,8 @@ function refreshEngineStatus() {
   const engine = stockfishReady
     ? "Running on phone with Stockfish worker + Tiberius overlay."
     : "Booting Stockfish worker before Tiberius moves.";
-  engineStatusEl.textContent = `${engine} ${memorySummaryText()}`;
+  const runtime = siteRuntimeMode === "static-local" ? " Site data is local/static." : ` Runtime: ${siteRuntimeMode}.`;
+  engineStatusEl.textContent = `${engine} ${memorySummaryText()}${runtime}`;
   updateSolutionProgress();
 }
 
@@ -680,6 +678,12 @@ function squareColor(square) {
 
 function syncSummary() {
   const pending = readOutbox().length;
+  if (!syncEndpoints.length) {
+    syncTextEl.textContent = pending
+      ? `Static local mode. ${pending} game update${pending === 1 ? "" : "s"} saved on this device until a core endpoint is connected.`
+      : "Static local mode. Games, learning, and progress are saved on this device.";
+    return;
+  }
   syncTextEl.textContent = pending
     ? `Linked to Tiberius core. ${pending} game update${pending === 1 ? "" : "s"} queued until the core accepts them.`
     : "Linked to Tiberius core. All game updates are sent.";
@@ -1486,11 +1490,15 @@ async function flushSync() {
     syncSummary();
     return;
   }
+  if (!syncEndpoints.length) {
+    syncSummary();
+    return;
+  }
   syncInFlight = true;
   let delivered = false;
   const sentIds = new Set(events.map(event => event.id).filter(Boolean));
   try {
-    for (const endpoint of SYNC_ENDPOINTS) {
+    for (const endpoint of syncEndpoints) {
       try {
         const response = await fetch(endpoint, {
           method: "POST",
@@ -2145,6 +2153,32 @@ async function loadManifest() {
   return manifest;
 }
 
+async function loadSiteRuntime() {
+  let runtime = {
+    mode: "static-local",
+    sync_endpoints: [],
+    multiplayer_endpoints: [],
+    memory_sources: [],
+  };
+  try {
+    const response = await fetch("site-runtime.json", { cache: "no-store" });
+    if (response.ok) runtime = { ...runtime, ...(await response.json()) };
+  } catch (_err) {}
+  siteRuntimeMode = runtime.mode || "static-local";
+  syncEndpoints = Array.isArray(runtime.sync_endpoints) ? runtime.sync_endpoints.filter(Boolean) : [];
+  multiplayer.endpoints = Array.isArray(runtime.multiplayer_endpoints) ? runtime.multiplayer_endpoints.filter(Boolean) : [];
+  return runtime;
+}
+
+function applyRuntimeMemorySources(manifest, runtime) {
+  const runtimeSources = Array.isArray(runtime.memory_sources) ? runtime.memory_sources : [];
+  if (!runtimeSources.length) return manifest;
+  return {
+    ...manifest,
+    sources: [...(manifest.sources || []), ...runtimeSources],
+  };
+}
+
 function loadPhoneMemory() {
   try {
     phoneMemory = JSON.parse(localStorage.getItem(scopedKey(PHONE_MEMORY_KEY))) || phoneMemory;
@@ -2192,7 +2226,8 @@ async function boot() {
     statusMessage = "New game started. You are black.";
     saveState();
   }
-  const manifest = await loadManifest();
+  const runtime = await loadSiteRuntime();
+  const manifest = applyRuntimeMemorySources(await loadManifest(), runtime);
   await loadMemoryPhase(manifest, "initial");
   refreshEngineStatus();
   explainForHumanTurn();
